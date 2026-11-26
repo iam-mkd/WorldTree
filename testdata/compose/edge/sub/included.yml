@@ -1,0 +1,4 @@
+services:
+  inc:
+    image: redis:7-alpine
+    ports: ["6391:6379"]

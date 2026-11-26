@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: notes-postgres
+    environment: { POSTGRES_USER: notes, POSTGRES_PASSWORD: notes, POSTGRES_DB: notes }
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD","pg_isready","-U","notes"], interval: 2s, retries: 30 }
+  redis:
+    image: redis:7
+    container_name: notes-redis
+    ports: ["6379:6379"]
+  app:
+    build: .
+    container_name: notes-app
+    environment: { DB_HOST: postgres, REDIS_HOST: redis }
+    ports: ["8080:8080"]
+    depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_started } }
+volumes:
+  pgdata:

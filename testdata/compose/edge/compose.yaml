@@ -1,0 +1,32 @@
+include:
+  - sub/included.yml
+x-common: &common
+  image: redis:7-alpine
+  restart: "no"
+services:
+  cache:
+    <<: *common
+    container_name: edge-cache
+    ports: ["6390:6379"]
+  worker:
+    extends: { file: base.yml, service: basesvc }
+    ports: ["7100-7102:7100-7102"]
+  builder:
+    build: ./img
+    profiles: [tools]
+    ports: ["7200:80"]
+  hostnet:
+    image: redis:7-alpine
+    network_mode: host
+    profiles: [host]
+  pinned:
+    image: redis:7-alpine
+    networks: { fixed: { ipv4_address: 172.31.250.10 } }
+    volumes:
+      - /c/worldtree-spike-shared:/shared
+      - shared-ext:/ext
+networks:
+  fixed:
+    ipam: { config: [ { subnet: 172.31.250.0/24 } ] }
+volumes:
+  shared-ext: { external: true, name: worldtree_spike_ext }
