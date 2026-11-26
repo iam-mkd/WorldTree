@@ -1,0 +1,133 @@
+{
+  "name": "shape-mastodon",
+  "networks": {
+    "external_network": {
+      "name": "shape-mastodon_external_network",
+      "ipam": {}
+    },
+    "internal_network": {
+      "name": "shape-mastodon_internal_network",
+      "ipam": {},
+      "internal": true
+    }
+  },
+  "services": {
+    "db": {
+      "command": null,
+      "entrypoint": null,
+      "environment": {
+        "POSTGRES_HOST_AUTH_METHOD": "trust"
+      },
+      "image": "postgres:14-alpine",
+      "networks": {
+        "internal_network": null
+      },
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/work/shape-mastodon/postgres14",
+          "target": "/var/lib/postgresql/data",
+          "bind": {}
+        }
+      ]
+    },
+    "redis": {
+      "command": null,
+      "entrypoint": null,
+      "image": "redis:7-alpine",
+      "networks": {
+        "internal_network": null
+      },
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/work/shape-mastodon/redis",
+          "target": "/data",
+          "bind": {}
+        }
+      ]
+    },
+    "streaming": {
+      "command": null,
+      "entrypoint": null,
+      "environment": {
+        "LOCAL_DOMAIN": "example.test"
+      },
+      "networks": {
+        "external_network": null,
+        "internal_network": null
+      },
+      "build": {
+        "context": "/work/shape-mastodon",
+        "dockerfile": "streaming/Dockerfile"
+      },
+      "depends_on": {
+        "db": {
+          "condition": "service_started",
+          "required": true
+        },
+        "redis": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "ports": [
+        {
+          "mode": "ingress",
+          "host_ip": "127.0.0.1",
+          "target": 4000,
+          "published": "4000",
+          "protocol": "tcp"
+        }
+      ]
+    },
+    "web": {
+      "command": [
+        "bundle",
+        "exec",
+        "puma",
+        "-C",
+        "config/puma.rb"
+      ],
+      "entrypoint": null,
+      "environment": {
+        "LOCAL_DOMAIN": "example.test"
+      },
+      "networks": {
+        "external_network": null,
+        "internal_network": null
+      },
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/work/shape-mastodon/public/system",
+          "target": "/mastodon/public/system",
+          "bind": {}
+        }
+      ],
+      "build": {
+        "context": "/work/shape-mastodon",
+        "dockerfile": "Dockerfile"
+      },
+      "depends_on": {
+        "db": {
+          "condition": "service_started",
+          "required": true
+        },
+        "redis": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "ports": [
+        {
+          "mode": "ingress",
+          "host_ip": "127.0.0.1",
+          "target": 3000,
+          "published": "3000",
+          "protocol": "tcp"
+        }
+      ]
+    }
+  }
+}

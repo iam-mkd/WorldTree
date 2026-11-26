@@ -1,0 +1,4 @@
+ports to lease:
+  streaming/127.0.0.1/4000/tcp (published 4000)
+  web/127.0.0.1/3000/tcp (published 3000)
+findings:

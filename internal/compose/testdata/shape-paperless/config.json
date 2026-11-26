@@ -1,0 +1,116 @@
+{
+  "name": "shape-paperless",
+  "networks": {
+    "default": {
+      "name": "shape-paperless_default",
+      "ipam": {}
+    }
+  },
+  "services": {
+    "broker": {
+      "restart": "unless-stopped",
+      "command": null,
+      "entrypoint": null,
+      "image": "docker.io/library/redis:7",
+      "networks": {
+        "default": null
+      },
+      "volumes": [
+        {
+          "type": "volume",
+          "source": "redisdata",
+          "target": "/data",
+          "volume": {}
+        }
+      ]
+    },
+    "db": {
+      "restart": "unless-stopped",
+      "command": null,
+      "entrypoint": null,
+      "environment": {
+        "POSTGRES_DB": "paperless",
+        "POSTGRES_PASSWORD": "paperless",
+        "POSTGRES_USER": "paperless"
+      },
+      "image": "docker.io/library/postgres:17",
+      "networks": {
+        "default": null
+      },
+      "volumes": [
+        {
+          "type": "volume",
+          "source": "pgdata",
+          "target": "/var/lib/postgresql/data",
+          "volume": {}
+        }
+      ]
+    },
+    "webserver": {
+      "restart": "unless-stopped",
+      "command": null,
+      "entrypoint": null,
+      "environment": {
+        "PAPERLESS_DBHOST": "db",
+        "PAPERLESS_REDIS": "redis://broker:6379",
+        "PAPERLESS_TIME_ZONE": "UTC"
+      },
+      "image": "ghcr.io/example/docs-server:latest",
+      "networks": {
+        "default": null
+      },
+      "volumes": [
+        {
+          "type": "volume",
+          "source": "data",
+          "target": "/usr/src/paperless/data",
+          "volume": {}
+        },
+        {
+          "type": "volume",
+          "source": "media",
+          "target": "/usr/src/paperless/media",
+          "volume": {}
+        },
+        {
+          "type": "bind",
+          "source": "/work/shape-paperless/export",
+          "target": "/usr/src/paperless/export",
+          "bind": {}
+        }
+      ],
+      "depends_on": {
+        "broker": {
+          "condition": "service_started",
+          "required": true
+        },
+        "db": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "ports": [
+        {
+          "mode": "ingress",
+          "target": 8000,
+          "published": "8000",
+          "protocol": "tcp"
+        }
+      ]
+    }
+  },
+  "volumes": {
+    "data": {
+      "name": "shape-paperless_data"
+    },
+    "media": {
+      "name": "shape-paperless_media"
+    },
+    "pgdata": {
+      "name": "shape-paperless_pgdata"
+    },
+    "redisdata": {
+      "name": "shape-paperless_redisdata"
+    }
+  }
+}

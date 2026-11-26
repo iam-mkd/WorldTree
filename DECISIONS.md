@@ -23,3 +23,19 @@
 - JSON + flock registry, not SQLite: tiny data, no cgo, hand-repairable.
 - Windows: best-effort (build + unit tests in CI). ASSUMED — user develops on Windows but did not confirm.
 - Third-party compose files (AGPL/GPL) not committed; licence check before using them as testdata.
+
+## 2026-11-26 — Day 2: compose rewrite rules (refines Spike B's rewrite.py)
+- Synthetic `shape-*` fixtures instead of the real immich/mastodon/paperless files: licence still open.
+  Real-file coverage is Spike B's; swap them in once the licence is decided.
+- Ports rendered in long syntax under `!override`, and unpublished (ephemeral) ports are kept.
+  rewrite.py dropped them: `!override` replaces the whole list.
+- Binds outside the project: writable dirs are remapped under `.worldtree/binds/` (start empty);
+  **read-only binds and writable file binds are left shared** with a finding. Remapping a config file or
+  cert dir would break the app (a missing source becomes an empty dir). rewrite.py remapped everything.
+- Volumes/networks with an explicit `name:` are renamed to `<world project>_<key>`: otherwise every world
+  shares them. Detected as `name != <config project>_<key>`.
+- `network_mode: container:<x>` is an error (joins a container outside the world); `pid/ipc: host`,
+  external_links, `volumes_from: container:` and the Docker socket are warnings.
+- Override sets top-level `name:` to the world project, so it is self-contained even without `-p`.
+- Lease keys are `service/host_ip/target/proto[#n]`, not list positions, so reordering ports keeps leases.
+- `render` exits 1 when any finding is an error, so scripts and agents notice.

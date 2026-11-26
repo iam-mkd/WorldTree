@@ -1,0 +1,36 @@
+# Synthetic: features not covered by the edge fixture. Explicit volume/network names,
+# IPv6 and UDP ports, an unpublished (ephemeral) port next to a fixed one, a published
+# range onto one target, read-only and writable binds outside the project, a file bind,
+# network_mode service:/container:, external_links, volumes_from, pid: host.
+services:
+  api:
+    image: nginx:alpine
+    labels: { team: core }
+    ports:
+      - "8080:80"
+      - "80"
+      - "[::1]:8443:443"
+      - "5353:5353/udp"
+      - "9000-9005:9000"
+    volumes:
+      - shared:/shared
+      - /opt/worldtree-fixture/certs:/certs:ro
+      - /opt/worldtree-fixture/cache:/cache
+      - /opt/worldtree-fixture/app.conf:/etc/app.conf
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [backend]
+  sidecar:
+    image: busybox
+    network_mode: service:api
+  legacy:
+    image: busybox
+    network_mode: container:some-fixed-name
+    external_links: [other_db:db]
+    volumes_from: [container:some-other]
+    pid: host
+volumes:
+  shared:
+    name: team-shared-data
+networks:
+  backend:
+    name: team-backend

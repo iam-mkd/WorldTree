@@ -12,16 +12,19 @@
   (not golangci-lint: prebuilt binaries lag new Go versions).
 
 ## Progress (PLAN.md)
-- Day 1 (scaffold, cobra, `worldtree version`, Makefile, CI on 3 OSes, testdata) — PR `day-01-scaffold`.
+- Day 1 (scaffold, cobra, `worldtree version`, Makefile, CI on 3 OSes, testdata) — merged (PR #1).
+- Day 2 (`internal/compose`: plan + render + golden tests + real-compose acceptance test; `worldtree render`)
+  — done on branch `day-01-scaffold-54ed7n` (name fixed by the cloud session; holds Day 2 only, rebased on main).
 
 ## Workflow
 - Repo: https://github.com/iam-mkd/WorldTree (public). Initial commits pushed to `main` on 2026-11-26.
 - From now on: every change goes on a branch + PR; never push to `main` directly.
 
 ## Next
-- After Day 1 PR merges: Day 2, `internal/compose` (port of `spikes/b/rewrite.py`) + golden tests.
+- Day 3: `internal/registry` (JSON + flock, atomic write) + `internal/ports` (allocator, 4-address probe).
 
 ## Open questions
 - Licence for WorldTree (MIT / Apache-2.0?) and whether AGPL/GPL compose files may be used as testdata.
 - Installing worktrunk for Day 11 end-to-end test needs approval.
-- Unverified on macOS/Linux and with real worktrunk.
+- Unverified on macOS and with real worktrunk. Day 2 ran on Linux (cloud container: Compose v5.7.1, no Docker daemon,
+  so only `compose config` was exercised; containers were not started).

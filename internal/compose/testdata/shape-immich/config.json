@@ -1,0 +1,120 @@
+{
+  "name": "photos",
+  "networks": {
+    "default": {
+      "name": "photos_default",
+      "ipam": {}
+    }
+  },
+  "services": {
+    "database": {
+      "container_name": "photos_postgres",
+      "command": null,
+      "entrypoint": null,
+      "environment": {
+        "POSTGRES_DB": "photos",
+        "POSTGRES_PASSWORD": "postgres",
+        "POSTGRES_USER": "postgres"
+      },
+      "image": "postgres:16",
+      "networks": {
+        "default": null
+      },
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/work/shape-immich/postgres",
+          "target": "/var/lib/postgresql/data",
+          "bind": {}
+        }
+      ]
+    },
+    "machine-learning": {
+      "container_name": "photos_ml",
+      "command": null,
+      "entrypoint": null,
+      "environment": {
+        "DB_DATABASE_NAME": "photos",
+        "DB_DATA_LOCATION": "./postgres",
+        "DB_PASSWORD": "postgres",
+        "DB_USERNAME": "postgres",
+        "UPLOAD_LOCATION": "./library"
+      },
+      "image": "ghcr.io/example/photos-ml:release",
+      "networks": {
+        "default": null
+      },
+      "volumes": [
+        {
+          "type": "volume",
+          "source": "model-cache",
+          "target": "/cache",
+          "volume": {}
+        }
+      ]
+    },
+    "redis": {
+      "container_name": "photos_redis",
+      "command": null,
+      "entrypoint": null,
+      "image": "valkey/valkey:8",
+      "networks": {
+        "default": null
+      }
+    },
+    "server": {
+      "container_name": "photos_server",
+      "command": null,
+      "entrypoint": null,
+      "environment": {
+        "DB_DATABASE_NAME": "photos",
+        "DB_DATA_LOCATION": "./postgres",
+        "DB_PASSWORD": "postgres",
+        "DB_USERNAME": "postgres",
+        "UPLOAD_LOCATION": "./library"
+      },
+      "image": "ghcr.io/example/photos-server:release",
+      "networks": {
+        "default": null
+      },
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/work/shape-immich/library",
+          "target": "/data",
+          "bind": {}
+        },
+        {
+          "type": "bind",
+          "source": "/etc/localtime",
+          "target": "/etc/localtime",
+          "read_only": true,
+          "bind": {}
+        }
+      ],
+      "depends_on": {
+        "database": {
+          "condition": "service_started",
+          "required": true
+        },
+        "redis": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "ports": [
+        {
+          "mode": "ingress",
+          "target": 2283,
+          "published": "2283",
+          "protocol": "tcp"
+        }
+      ]
+    }
+  },
+  "volumes": {
+    "model-cache": {
+      "name": "photos_model-cache"
+    }
+  }
+}

@@ -1,0 +1,118 @@
+{
+  "name": "edge-names",
+  "networks": {
+    "backend": {
+      "name": "team-backend",
+      "ipam": {}
+    }
+  },
+  "services": {
+    "api": {
+      "command": null,
+      "entrypoint": null,
+      "image": "nginx:alpine",
+      "labels": {
+        "team": "core"
+      },
+      "networks": {
+        "backend": null
+      },
+      "volumes": [
+        {
+          "type": "volume",
+          "source": "shared",
+          "target": "/shared",
+          "volume": {}
+        },
+        {
+          "type": "bind",
+          "source": "/opt/worldtree-fixture/certs",
+          "target": "/certs",
+          "read_only": true,
+          "bind": {}
+        },
+        {
+          "type": "bind",
+          "source": "/opt/worldtree-fixture/cache",
+          "target": "/cache",
+          "bind": {}
+        },
+        {
+          "type": "bind",
+          "source": "/opt/worldtree-fixture/app.conf",
+          "target": "/etc/app.conf",
+          "bind": {}
+        },
+        {
+          "type": "bind",
+          "source": "/var/run/docker.sock",
+          "target": "/var/run/docker.sock",
+          "bind": {}
+        }
+      ],
+      "ports": [
+        {
+          "mode": "ingress",
+          "target": 80,
+          "published": "8080",
+          "protocol": "tcp"
+        },
+        {
+          "mode": "ingress",
+          "target": 80,
+          "protocol": "tcp"
+        },
+        {
+          "mode": "ingress",
+          "host_ip": "::1",
+          "target": 443,
+          "published": "8443",
+          "protocol": "tcp"
+        },
+        {
+          "mode": "ingress",
+          "target": 5353,
+          "published": "5353",
+          "protocol": "udp"
+        },
+        {
+          "mode": "ingress",
+          "target": 9000,
+          "published": "9000-9005",
+          "protocol": "tcp"
+        }
+      ]
+    },
+    "legacy": {
+      "external_links": [
+        "other_db:db"
+      ],
+      "command": null,
+      "entrypoint": null,
+      "image": "busybox",
+      "network_mode": "container:some-fixed-name",
+      "pid": "host",
+      "volumes_from": [
+        "container:some-other"
+      ]
+    },
+    "sidecar": {
+      "command": null,
+      "entrypoint": null,
+      "image": "busybox",
+      "network_mode": "service:api",
+      "depends_on": {
+        "api": {
+          "condition": "service_started",
+          "restart": true,
+          "required": true
+        }
+      }
+    }
+  },
+  "volumes": {
+    "shared": {
+      "name": "team-shared-data"
+    }
+  }
+}
