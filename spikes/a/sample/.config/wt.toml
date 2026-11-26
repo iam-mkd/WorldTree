@@ -1,0 +1,5 @@
+# What the real worktrunk config would look like (not executed in this spike):
+[post-start]
+env = "bash .config/wt-hook.sh {{ branch }} && docker compose up -d"
+[pre-remove]
+down = "docker compose down -v --remove-orphans"

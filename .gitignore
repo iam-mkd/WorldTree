@@ -1,0 +1,16 @@
+# spike scratch (nested git repo, worktrees, caches, generated secrets)
+spikes/a/app/
+spikes/a/wt/
+spikes/a/.m2/
+spikes/a/.t0
+spikes/b/run/
+spikes/b/edge/run/
+# third-party compose files: re-fetch with spikes/b/SOURCES.md (licence check pending)
+spikes/b/src/
+# go
+/bin/
+/dist/
+*.test
+coverage.out
+.worldtree/
+.env.worldtree
