@@ -1,0 +1,8 @@
+ports to lease:
+  server//2283/tcp (published 2283)
+findings:
+  info  container-name         database: fixed container_name "photos_postgres" dropped
+  info  container-name         machine-learning: fixed container_name "photos_ml" dropped
+  info  container-name         redis: fixed container_name "photos_redis" dropped
+  info  container-name         server: fixed container_name "photos_server" dropped
+  info  system-bind            server: system path /etc/localtime mounted as is (shared, expected)

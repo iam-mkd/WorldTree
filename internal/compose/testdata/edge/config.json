@@ -1,0 +1,149 @@
+{
+  "name": "edge",
+  "networks": {
+    "default": {
+      "name": "edge_default",
+      "ipam": {}
+    },
+    "fixed": {
+      "name": "edge_fixed",
+      "ipam": {
+        "config": [
+          {
+            "subnet": "172.31.250.0/24"
+          }
+        ]
+      }
+    }
+  },
+  "services": {
+    "builder": {
+      "profiles": [
+        "tools"
+      ],
+      "command": null,
+      "entrypoint": null,
+      "networks": {
+        "default": null
+      },
+      "build": {
+        "context": "/work/edge/img",
+        "dockerfile": "Dockerfile"
+      },
+      "ports": [
+        {
+          "mode": "ingress",
+          "target": 80,
+          "published": "7200",
+          "protocol": "tcp"
+        }
+      ]
+    },
+    "cache": {
+      "restart": "no",
+      "container_name": "edge-cache",
+      "command": null,
+      "entrypoint": null,
+      "image": "redis:7-alpine",
+      "networks": {
+        "default": null
+      },
+      "ports": [
+        {
+          "mode": "ingress",
+          "target": 6379,
+          "published": "6390",
+          "protocol": "tcp"
+        }
+      ]
+    },
+    "hostnet": {
+      "profiles": [
+        "host"
+      ],
+      "command": null,
+      "entrypoint": null,
+      "image": "redis:7-alpine",
+      "network_mode": "host"
+    },
+    "inc": {
+      "command": null,
+      "entrypoint": null,
+      "image": "redis:7-alpine",
+      "networks": {
+        "default": null
+      },
+      "ports": [
+        {
+          "mode": "ingress",
+          "target": 6379,
+          "published": "6391",
+          "protocol": "tcp"
+        }
+      ]
+    },
+    "pinned": {
+      "command": null,
+      "entrypoint": null,
+      "image": "redis:7-alpine",
+      "networks": {
+        "fixed": {
+          "ipv4_address": "172.31.250.10"
+        }
+      },
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/c/worldtree-spike-shared",
+          "target": "/shared",
+          "bind": {}
+        },
+        {
+          "type": "volume",
+          "source": "shared-ext",
+          "target": "/ext",
+          "volume": {}
+        }
+      ]
+    },
+    "worker": {
+      "container_name": "edge-worker",
+      "command": null,
+      "entrypoint": null,
+      "image": "redis:7-alpine",
+      "networks": {
+        "default": null
+      },
+      "ports": [
+        {
+          "mode": "ingress",
+          "target": 7100,
+          "published": "7100",
+          "protocol": "tcp"
+        },
+        {
+          "mode": "ingress",
+          "target": 7101,
+          "published": "7101",
+          "protocol": "tcp"
+        },
+        {
+          "mode": "ingress",
+          "target": 7102,
+          "published": "7102",
+          "protocol": "tcp"
+        }
+      ]
+    }
+  },
+  "volumes": {
+    "shared-ext": {
+      "name": "worldtree_spike_ext",
+      "external": true
+    }
+  },
+  "x-common": {
+    "image": "redis:7-alpine",
+    "restart": "no"
+  }
+}

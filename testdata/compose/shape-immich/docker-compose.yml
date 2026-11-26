@@ -1,0 +1,32 @@
+# Synthetic fixture shaped like immich's compose file (not a copy): top-level name,
+# fixed container_name on every service, bind data dirs from .env, env_file.
+name: photos
+services:
+  server:
+    container_name: photos_server
+    image: ghcr.io/example/photos-server:release
+    volumes:
+      - ${UPLOAD_LOCATION}:/data
+      - /etc/localtime:/etc/localtime:ro
+    env_file: [.env]
+    ports: ["2283:2283"]
+    depends_on: [redis, database]
+  machine-learning:
+    container_name: photos_ml
+    image: ghcr.io/example/photos-ml:release
+    volumes: [model-cache:/cache]
+    env_file: [.env]
+  redis:
+    container_name: photos_redis
+    image: valkey/valkey:8
+  database:
+    container_name: photos_postgres
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_DB: ${DB_DATABASE_NAME}
+    volumes:
+      - ${DB_DATA_LOCATION}:/var/lib/postgresql/data
+volumes:
+  model-cache:

@@ -1,0 +1,17 @@
+ports to lease:
+  api//80/tcp (published 8080)
+  api/::1/443/tcp (published 8443)
+  api//5353/udp (published 5353)
+  api//9000/tcp (published 9000-9005)
+findings:
+  info  port-range             api: published range 9000-9005 for target 9000 replaced by one leased port
+  info  shared-readonly-bind   api: read-only bind /opt/worldtree-fixture/certs outside the project is shared (cannot collide)
+  info  bind-remapped          api: writable bind /opt/worldtree-fixture/cache outside the project -> /work/edge-names/.worldtree/binds/api/cache (starts empty)
+  warn  shared-file-bind       api: writable file bind /opt/worldtree-fixture/app.conf outside the project is shared by every world (not remapped: would become an empty dir)
+  warn  docker-socket          api: mounts the Docker socket: this container can control every world
+  error network-mode-container legacy: network_mode "container:some-fixed-name" joins a container outside the world; use service:<name> instead
+  warn  pid-host               legacy: pid: host sees processes of every world
+  warn  external-link          legacy: external_links "other_db:db" points outside the world (shared)
+  warn  volumes-from-container legacy: volumes_from "container:some-other" mounts a container outside the world (shared)
+  info  explicit-name          (project): volume "shared" has fixed name "team-shared-data"; renamed to "wt-edge-names-0123abcd_shared"
+  info  explicit-name          (project): network "backend" has fixed name "team-backend"; renamed to "wt-edge-names-0123abcd_backend"

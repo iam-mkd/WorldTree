@@ -1,0 +1,15 @@
+ports to lease:
+  builder//80/tcp (published 7200)
+  cache//6379/tcp (published 6390)
+  inc//6379/tcp (published 6391)
+  worker//7100/tcp (published 7100)
+  worker//7101/tcp (published 7101)
+  worker//7102/tcp (published 7102)
+findings:
+  info  container-name         cache: fixed container_name "edge-cache" dropped
+  error network-mode-host      hostnet: network_mode: host shares the host's ports with every world; cannot isolate
+  error static-ip              pinned: static IP on network "fixed" collides between worlds
+  info  bind-remapped          pinned: writable bind /c/worldtree-spike-shared outside the project -> /work/edge/.worldtree/binds/pinned/shared (starts empty)
+  info  container-name         worker: fixed container_name "edge-worker" dropped
+  warn  external-volume        (project): volume "shared-ext" (worldtree_spike_ext) is external: shared by every world, not isolated
+  error fixed-subnet           (project): network "fixed" pins an ipam subnet; a second world fails with 'Pool overlaps'. Remove the ipam config or use worldtree on one world only

@@ -1,0 +1,8 @@
+ports to lease:
+  app//8080/tcp (published 8080)
+  postgres//5432/tcp (published 5432)
+  redis//6379/tcp (published 6379)
+findings:
+  info  container-name         app: fixed container_name "notes-app" dropped
+  info  container-name         postgres: fixed container_name "notes-postgres" dropped
+  info  container-name         redis: fixed container_name "notes-redis" dropped

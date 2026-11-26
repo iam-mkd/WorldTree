@@ -1,0 +1,107 @@
+{
+  "name": "spring-notes",
+  "networks": {
+    "default": {
+      "name": "spring-notes_default",
+      "ipam": {}
+    }
+  },
+  "services": {
+    "app": {
+      "container_name": "notes-app",
+      "command": null,
+      "entrypoint": null,
+      "environment": {
+        "DB_HOST": "postgres",
+        "REDIS_HOST": "redis"
+      },
+      "networks": {
+        "default": null
+      },
+      "build": {
+        "context": "/work/spring-notes",
+        "dockerfile": "Dockerfile"
+      },
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy",
+          "required": true
+        },
+        "redis": {
+          "condition": "service_started",
+          "required": true
+        }
+      },
+      "ports": [
+        {
+          "mode": "ingress",
+          "target": 8080,
+          "published": "8080",
+          "protocol": "tcp"
+        }
+      ]
+    },
+    "postgres": {
+      "container_name": "notes-postgres",
+      "command": null,
+      "entrypoint": null,
+      "environment": {
+        "POSTGRES_DB": "notes",
+        "POSTGRES_PASSWORD": "notes",
+        "POSTGRES_USER": "notes"
+      },
+      "image": "postgres:17",
+      "networks": {
+        "default": null
+      },
+      "volumes": [
+        {
+          "type": "volume",
+          "source": "pgdata",
+          "target": "/var/lib/postgresql/data",
+          "volume": {}
+        }
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "pg_isready",
+          "-U",
+          "notes"
+        ],
+        "interval": "2s",
+        "retries": 30
+      },
+      "ports": [
+        {
+          "mode": "ingress",
+          "target": 5432,
+          "published": "5432",
+          "protocol": "tcp"
+        }
+      ]
+    },
+    "redis": {
+      "container_name": "notes-redis",
+      "command": null,
+      "entrypoint": null,
+      "image": "redis:7",
+      "networks": {
+        "default": null
+      },
+      "ports": [
+        {
+          "mode": "ingress",
+          "target": 6379,
+          "published": "6379",
+          "protocol": "tcp"
+        }
+      ]
+    }
+  },
+  "volumes": {
+    "pgdata": {
+      "name": "spring-notes_pgdata"
+    }
+  }
+}
