@@ -7,13 +7,19 @@
 - Shipping: local CLI, single Go binary, GitHub Releases + Homebrew tap. Name `worldtree` is free on Homebrew.
 - Docker images used by spikes removed (19.6 GB -> 7.4 GB).
 
-## Proposed, awaiting approval
-- `ARCHITECTURE.md` and `PLAN.md` (14 days, 40 h, Day 1 = Fri 2026-11-27).
-- Windows = best-effort CI build + unit tests (assumed, not confirmed).
+- `ARCHITECTURE.md` + `PLAN.md` approved 2026-11-26 (incl. Windows = best-effort CI build + unit tests).
+- Go 1.27.4 installed (official MSI, checksum verified). Lint = gofmt + go vet + staticcheck v0.8.2
+  (not golangci-lint: prebuilt binaries lag new Go versions).
+
+## Progress (PLAN.md)
+- Day 1 (scaffold, cobra, `worldtree version`, Makefile, CI on 3 OSes, testdata) — PR `day-01-scaffold`.
+
+## Workflow
+- Repo: https://github.com/iam-mkd/WorldTree (public). Initial commits pushed to `main` on 2026-11-26.
+- From now on: every change goes on a branch + PR; never push to `main` directly.
 
 ## Next
-- User creates the GitHub repo and pushes this folder; work continues in that repo.
-- Day 1: Go scaffold, cobra, Makefile, CI, `worldtree version`.
+- After Day 1 PR merges: Day 2, `internal/compose` (port of `spikes/b/rewrite.py`) + golden tests.
 
 ## Open questions
 - Licence for WorldTree (MIT / Apache-2.0?) and whether AGPL/GPL compose files may be used as testdata.
