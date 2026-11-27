@@ -27,8 +27,10 @@ directory), read from <dir>/.worldtree/env:
 
 Load it into a shell (Spring Boot reads SPRING_* names only from real environment variables):
 
-  eval "$(worldtree env --format sh)"                              # bash, zsh
-  worldtree env --format powershell | Out-String | Invoke-Expression  # PowerShell
+  env_sh=$(worldtree env --format sh) && eval "$env_sh"            # bash, zsh
+  $e = worldtree env --format powershell; if ($LASTEXITCODE -eq 0) { $e | Out-String | Invoke-Expression }
+
+(Assign first: eval "$(worldtree env ...)" succeeds with empty output when env fails.)
 
 The output contains the database password.`,
 		Args: cobra.MaximumNArgs(1),

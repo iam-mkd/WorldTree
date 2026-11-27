@@ -70,12 +70,14 @@ func Format(vars []Var, format string) (string, error) {
 	return b.String(), nil
 }
 
-// dotenvQuote single-quotes a value (compose does not interpolate inside single quotes);
-// a value containing a single quote is double-quoted with \, " and $ escaped.
+// dotenvQuote single-quotes a plain value (compose does not interpolate inside single
+// quotes). A value with a single quote, a backslash (a trailing one would escape the
+// closing quote) or a line break is double-quoted with \, ", $ escaped and line breaks
+// written as \n / \r, so every assignment stays on one physical line for Parse.
 func dotenvQuote(v string) string {
-	if !strings.Contains(v, "'") {
+	if !strings.ContainsAny(v, "'\\\n\r") {
 		return "'" + v + "'"
 	}
-	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, `$`, `\$`)
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, `$`, `\$`, "\n", `\n`, "\r", `\r`)
 	return `"` + r.Replace(v) + `"`
 }

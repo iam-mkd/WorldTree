@@ -153,11 +153,13 @@ Spring Boot applies `SPRING_*` names only from real environment variables, so lo
 that starts the app:
 
 ```sh
-eval "$(worldtree env --format sh)" && ./mvnw spring-boot:run              # bash / zsh
+# bash / zsh: the assignment fails if `worldtree env` fails, so the app never starts with stale settings
+env_sh=$(worldtree env ../agent-b --format sh) && eval "$env_sh" && ./mvnw spring-boot:run
 ```
 
 ```powershell
-worldtree env --format powershell | Out-String | Invoke-Expression; ./mvnw spring-boot:run
+$envPs = worldtree env ../agent-b --format powershell
+if ($LASTEXITCODE -eq 0) { $envPs | Out-String | Invoke-Expression; ./mvnw spring-boot:run }
 ```
 
 With that, the bundled Spring sample started on the host wrote into world B's Postgres and Redis, and

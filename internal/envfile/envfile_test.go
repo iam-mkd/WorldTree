@@ -79,12 +79,39 @@ func TestIPv6HostIsBracketed(t *testing.T) {
 	}
 }
 
+func TestPortKeysStayDistinct(t *testing.T) {
+	w := World{
+		ID: "id", Project: "p",
+		Config: &compose.Config{Services: map[string]compose.Service{"api-web": {}, "api_web": {}}},
+		Ports: []compose.PortRequest{
+			{Key: "api-web/127.0.0.1/8080/tcp", Service: "api-web", Port: compose.Port{HostIP: "127.0.0.1", Target: 8080}},
+			{Key: "api-web//8080/tcp", Service: "api-web", Port: compose.Port{Target: 8080}},
+			{Key: "api_web//8080/tcp", Service: "api_web", Port: compose.Port{Target: 8080}},
+		},
+		Leases: map[string]int{"api-web/127.0.0.1/8080/tcp": 1, "api-web//8080/tcp": 2, "api_web//8080/tcp": 3},
+	}
+	got := map[string]string{}
+	for _, v := range Build(w)[2:] {
+		if _, dup := got[v.Key]; dup {
+			t.Fatalf("duplicate key %s", v.Key)
+		}
+		got[v.Key] = v.Value
+	}
+	want := map[string]string{"WORLDTREE_PORT_API_WEB_8080": "2", "WORLDTREE_PORT_API_WEB_8080_2": "1", "WORLDTREE_PORT_API_WEB_8080_3": "3"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
 func TestRenderRoundTripsThroughComposeParser(t *testing.T) {
 	vars := []Var{
 		{"PLAIN", "abc"},
 		{"SPACES_HASH", "a b # not a comment"},
 		{"DOLLAR", "pa$$word ${HOME} $USER"},
 		{"QUOTES", `it's "quoted" \back\slash $x`},
+		{"TRAILING_BACKSLASH", `secret\`},
+		{"BACKSLASH_NO_QUOTE", `a\b`},
+		{"MULTILINE", "line1\nline2\r\nline3"},
 		{"EMPTY", ""},
 	}
 	got, err := Parse(Render(vars))

@@ -44,12 +44,22 @@ func Build(w World) []Var {
 		if ports[i].Service != ports[j].Service {
 			return ports[i].Service < ports[j].Service
 		}
-		return ports[i].Port.Target < ports[j].Port.Target
+		if ports[i].Port.Target != ports[j].Port.Target {
+			return ports[i].Port.Target < ports[j].Port.Target
+		}
+		return ports[i].Key < ports[j].Key // stable order for same target on several host IPs
 	})
+	seen := map[string]int{}
 	for _, r := range ports {
 		key := "WORLDTREE_PORT_" + envName(r.Service) + "_" + strconv.Itoa(int(r.Port.Target))
 		if r.Port.Protocol == "udp" {
 			key += "_UDP"
+		}
+		// Distinct leases can map to one name (same target on two host IPs; services
+		// "api-web" and "api_web"). The first keeps the plain name, later ones get _2, _3...
+		seen[key]++
+		if n := seen[key]; n > 1 {
+			key += "_" + strconv.Itoa(n)
 		}
 		vars = append(vars, Var{key, strconv.Itoa(w.Leases[r.Key])})
 	}
