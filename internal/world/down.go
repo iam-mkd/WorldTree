@@ -3,8 +3,10 @@ package world
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,7 +27,12 @@ type Downer struct {
 	Log         io.Writer
 	Now         func() time.Time
 	LockTimeout time.Duration
+	// RemoveAll deletes a directory tree; nil means os.RemoveAll. Injected for tests.
+	RemoveAll func(path string) error
 }
+
+// CleanupImage runs the fallback delete of container-owned files in a world's .worldtree dir.
+const CleanupImage = "alpine:3"
 
 // NewDowner returns a Downer wired to the real registry and docker CLI.
 func NewDowner(reg *registry.Registry, log io.Writer) *Downer {
@@ -92,13 +99,36 @@ func (d *Downer) Down(ctx context.Context, absDir string) (*DownResult, error) {
 		return nil, err
 	}
 
-	if err := os.RemoveAll(filepath.Join(absDir, filepath.Dir(filepath.FromSlash(OverridePath)))); err != nil {
-		return nil, err
+	gen := filepath.Join(absDir, filepath.Dir(filepath.FromSlash(OverridePath)))
+	if err := d.removeGenerated(ctx, id, gen, neutral); err != nil {
+		return nil, fmt.Errorf("removing %s failed; world %s left in phase %q with its leases (re-run `worldtree down`): %w",
+			gen, id, registry.Removing, err)
 	}
 	if err := d.Reg.Update(func(s *registry.State) error { s.Remove(id); return nil }); err != nil {
 		return nil, err
 	}
 	return res, nil
+}
+
+// removeGenerated deletes the world's .worldtree dir. Remapped binds live under it, and a
+// container may have made their contents unremovable for this user (on Linux, postgres
+// chowns its data dir to its own uid with mode 0700). On a permission error only, the
+// contents are deleted as root from a throwaway container that mounts just this dir.
+func (d *Downer) removeGenerated(ctx context.Context, id, gen, neutral string) error {
+	removeAll := d.RemoveAll
+	if removeAll == nil {
+		removeAll = os.RemoveAll
+	}
+	err := removeAll(gen)
+	if err == nil || !errors.Is(err, fs.ErrPermission) {
+		return err
+	}
+	fmt.Fprintf(d.Log, "%s holds files owned by a container user; deleting them from a %s container\n", gen, CleanupImage)
+	if rerr := d.Run(ctx, neutral, d.Log, "run", "--rm", "--label", compose.LabelWorld+"="+id,
+		"-v", gen+":/w", CleanupImage, "find", "/w", "-mindepth", "1", "-delete"); rerr != nil {
+		return fmt.Errorf("%w (container cleanup also failed: %v)", err, rerr)
+	}
+	return removeAll(gen)
 }
 
 // sweep removes resources labelled with the world id that compose down did not, such as

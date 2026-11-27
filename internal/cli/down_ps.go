@@ -83,6 +83,7 @@ func newPsCmd() *cobra.Command {
 			}
 			tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(tw, "ID\tPHASE\tCONTAINERS\tPORTS\tDIR")
+			missing := 0
 			for _, w := range worlds {
 				containers := "?"
 				if w.DockerOK {
@@ -90,11 +91,19 @@ func newPsCmd() *cobra.Command {
 				}
 				dir := w.Dir
 				if w.DirMissing {
-					dir += "  (missing: run `worldtree down " + w.Dir + "`)"
+					dir += "  (dir missing)"
+					missing++
 				}
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", w.ID, w.Phase, containers, world.FormatPorts(w.Ports), dir)
 			}
-			return tw.Flush()
+			if err := tw.Flush(); err != nil {
+				return err
+			}
+			if missing > 0 {
+				// No ready-made command: quoting rules differ between shells (sh, PowerShell).
+				fmt.Fprintf(out, "\n%d world(s) whose directory is gone; remove each with `worldtree down <DIR>` (quote the path).\n", missing)
+			}
+			return nil
 		},
 	}
 }

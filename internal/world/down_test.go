@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -174,6 +175,78 @@ func TestDownSweepsLabelledLeftovers(t *testing.T) {
 	}
 	if strings.Contains(got, "network rm") {
 		t.Error("network rm called with nothing to remove")
+	}
+}
+
+// permDenied fails the first n RemoveAll calls with a permission error, like a postgres
+// data dir chowned to the container's uid with mode 0700.
+func permDenied(n int) func(string) error {
+	return func(p string) error {
+		if n > 0 {
+			n--
+			return &fs.PathError{Op: "unlinkat", Path: p + "/binds/db/pgdata", Err: fs.ErrPermission}
+		}
+		return os.RemoveAll(p)
+	}
+}
+
+func TestDownDeletesContainerOwnedFilesFromAContainer(t *testing.T) {
+	u, _ := newTestUpper(t, colliding)
+	dir := projectDir(t, "docker-compose.yml")
+	up, err := u.Up(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, calls, _ := newTestDowner(u.Reg)
+	d.RemoveAll = permDenied(1)
+	if _, err := d.Down(context.Background(), dir); err != nil {
+		t.Fatal(err)
+	}
+	gen := filepath.Join(dir, ".worldtree")
+	want := "run --rm --label " + "dev.worldtree.world=" + up.ID + " -v " + gen + ":/w " + CleanupImage + " find /w -mindepth 1 -delete"
+	if len(*calls) != 2 || (*calls)[1].args != want {
+		t.Fatalf("docker calls = %v\nwant second = %q", *calls, want)
+	}
+	if len(load(t, u.Reg).Worlds) != 0 {
+		t.Error("world not removed after container cleanup")
+	}
+}
+
+func TestDownKeepsRecordWhenCleanupFails(t *testing.T) {
+	u, _ := newTestUpper(t, colliding)
+	dir := projectDir(t, "docker-compose.yml")
+	up, err := u.Up(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, _, _ := newTestDowner(u.Reg)
+	d.RemoveAll = permDenied(10)
+	d.Run = func(_ context.Context, _ string, _ io.Writer, args ...string) error {
+		if args[0] == "run" {
+			return errors.New("cannot pull alpine")
+		}
+		return nil
+	}
+	if _, err := d.Down(context.Background(), dir); err == nil || !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("err = %v, want permission error", err)
+	}
+	st := load(t, u.Reg)
+	if w := st.Worlds[up.ID]; w == nil || w.Phase != registry.Removing || len(st.LeasesOf(up.ID)) == 0 {
+		t.Errorf("world = %+v leases = %v; want removing with leases kept", w, st.LeasesOf(up.ID))
+	}
+}
+
+func TestDownOtherRemoveErrorsDoNotStartContainer(t *testing.T) {
+	u, _ := newTestUpper(t, colliding)
+	d, calls, _ := newTestDowner(u.Reg)
+	d.RemoveAll = func(string) error { return errors.New("disk on fire") }
+	if _, err := d.Down(context.Background(), projectDir(t, "docker-compose.yml")); err == nil {
+		t.Fatal("expected error")
+	}
+	for _, c := range *calls {
+		if strings.HasPrefix(c.args, "run ") {
+			t.Errorf("cleanup container started for a non-permission error: %v", c.args)
+		}
 	}
 }
 
