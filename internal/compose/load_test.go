@@ -81,6 +81,25 @@ func TestDefaultFilesReadsComposeFileFromDotEnv(t *testing.T) {
 	}
 }
 
+func TestDefaultFilesUsesComposeDotEnvRules(t *testing.T) {
+	t.Setenv("COMPOSE_FILE", "")
+	t.Setenv("COMPOSE_PATH_SEPARATOR", "")
+	t.Setenv("WT_TEST_STACK", "stack")
+	dir := t.TempDir()
+	// Inline comment after an unquoted value, and ${VAR} interpolation from the process env.
+	env := "COMPOSE_FILE=${WT_TEST_STACK}.yml # local override\n"
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(env), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := DefaultFiles(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{filepath.Join(dir, "stack.yml")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
 func TestDefaultFilesHonoursComposeFile(t *testing.T) {
 	dir := t.TempDir()
 	abs := filepath.Join(t.TempDir(), "other.yml")

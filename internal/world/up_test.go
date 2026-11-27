@@ -23,8 +23,9 @@ const fixedSubnet = `{"name":"app","services":{"db":{"image":"postgres:17"}},
 "networks":{"n":{"name":"app_n","ipam":{"config":[{"subnet":"172.31.250.0/24"}]}}}}`
 
 type fakeDocker struct {
-	calls [][]string
-	fail  error
+	calls  [][]string
+	fail   error
+	loaded []string // files the loader was given
 }
 
 func (f *fakeDocker) run(_ context.Context, _ string, _ io.Writer, args ...string) error {
@@ -42,10 +43,13 @@ func newTestUpper(t *testing.T, cfg string) (*Upper, *fakeDocker) {
 	return &Upper{
 		Reg:   reg,
 		Alloc: ports.Allocator{Min: 41000, Max: 41999},
-		Load:  func(context.Context, string) ([]byte, error) { return []byte(cfg), nil },
-		Run:   fd.run,
-		Log:   io.Discard,
-		Now:   func() time.Time { return time.Unix(0, 0) },
+		Load: func(_ context.Context, _ string, files []string) ([]byte, error) {
+			fd.loaded = files
+			return []byte(cfg), nil
+		},
+		Run: fd.run,
+		Log: io.Discard,
+		Now: func() time.Time { return time.Unix(0, 0) },
 
 		LockTimeout: time.Second,
 	}, fd
@@ -124,6 +128,9 @@ func TestUpRegistersLeasesWritesOverrideAndRunsCompose(t *testing.T) {
 		t.Fatalf("docker calls = %v", fd.calls)
 	}
 	got := strings.Join(fd.calls[0], " ")
+	if want := []string{filepath.Join(dir, "docker-compose.yml")}; strings.Join(fd.loaded, ",") != strings.Join(want, ",") {
+		t.Errorf("analysis loaded %v, want %v", fd.loaded, want)
+	}
 	for _, want := range []string{
 		"compose -p " + res.Project,
 		"-f " + filepath.Join(dir, "docker-compose.yml"),

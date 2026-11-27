@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/compose-spec/compose-go/v2/dotenv"
 )
 
 // MinVersion is the oldest Compose that understands !reset and !override.
@@ -20,12 +22,11 @@ var MinVersion = [2]int{2, 24}
 // The output can contain resolved secrets: callers keep it in memory only.
 // It does not need a running Docker daemon.
 //
-// The files are passed explicitly from DefaultFiles, so analysis and `up` always see
-// exactly the same inputs.
-func LoadConfig(ctx context.Context, dir string) ([]byte, error) {
-	files, err := DefaultFiles(dir)
-	if err != nil {
-		return nil, err
+// files are passed with -f: callers resolve them once with DefaultFiles and give the
+// same list to `docker compose up`, so analysis and startup always load identical inputs.
+func LoadConfig(ctx context.Context, dir string, files []string) ([]byte, error) {
+	if len(files) == 0 {
+		return nil, fmt.Errorf("docker compose config in %s: no compose files given", dir)
 	}
 	args := []string{"compose", "--project-directory", dir}
 	for _, f := range files {
@@ -51,7 +52,10 @@ func LoadConfig(ctx context.Context, dir string) ([]byte, error) {
 // Unlike compose, parent directories are not searched: a world is identified by its
 // directory, so running from a subdirectory would create a second world for one stack.
 func DefaultFiles(dir string) ([]string, error) {
-	dotenv := readDotEnv(filepath.Join(dir, ".env"))
+	dotenv, err := readDotEnv(filepath.Join(dir, ".env"))
+	if err != nil {
+		return nil, err
+	}
 	setting := func(key string) string {
 		if v := os.Getenv(key); v != "" {
 			return v
@@ -94,31 +98,18 @@ func DefaultFiles(dir string) ([]string, error) {
 	return files, nil
 }
 
-// readDotEnv returns the KEY=VALUE pairs of a compose .env file (missing file: empty).
-// It handles comments, blank lines, an `export ` prefix and matching quotes; values are
-// not interpolated, which is enough for COMPOSE_FILE / COMPOSE_PATH_SEPARATOR.
-func readDotEnv(path string) map[string]string {
-	m := map[string]string{}
-	data, err := os.ReadFile(path)
+// readDotEnv reads a project .env file with compose's own parser (compose-go), so inline
+// comments, quoting, `export` and ${VAR} interpolation from the process environment
+// behave exactly as in `docker compose`. A missing file yields an empty map.
+func readDotEnv(path string) (map[string]string, error) {
+	if !fileExists(path) {
+		return map[string]string{}, nil
+	}
+	m, err := dotenv.ReadFile(path, os.LookupEnv)
 	if err != nil {
-		return m
+		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		k, v, ok := strings.Cut(strings.TrimPrefix(line, "export "), "=")
-		if !ok {
-			continue
-		}
-		v = strings.TrimSpace(v)
-		if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
-			v = v[1 : len(v)-1]
-		}
-		m[strings.TrimSpace(k)] = v
-	}
-	return m
+	return m, nil
 }
 
 func fileExists(p string) bool {

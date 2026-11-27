@@ -20,16 +20,24 @@ const OverridePath = ".worldtree/compose.override.yml"
 
 // Analysis is a compose project analysed for one world.
 type Analysis struct {
-	Dir     string // absolute world dir
+	Dir     string   // absolute world dir
+	Files   []string // compose files, resolved once; analysis and `up` both use exactly these
 	ID      string
 	Project string
 	Plan    *compose.Plan
 }
 
-// Analyse loads and analyses the compose project in absDir. It runs `docker compose config`
-// (load), which needs the compose CLI but creates nothing in Docker.
-func Analyse(ctx context.Context, absDir string, load func(context.Context, string) ([]byte, error)) (*Analysis, error) {
-	raw, err := load(ctx, absDir)
+// Loader runs `docker compose config` for dir with exactly files (compose.LoadConfig).
+type Loader func(ctx context.Context, dir string, files []string) ([]byte, error)
+
+// Analyse resolves the compose files of absDir once, then loads and analyses them. load
+// needs the compose CLI but creates nothing in Docker.
+func Analyse(ctx context.Context, absDir string, load Loader) (*Analysis, error) {
+	files, err := compose.DefaultFiles(absDir)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := load(ctx, absDir, files)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +53,7 @@ func Analyse(ctx context.Context, absDir string, load func(context.Context, stri
 	if err != nil {
 		return nil, err
 	}
-	return &Analysis{Dir: absDir, ID: id, Project: project, Plan: plan}, nil
+	return &Analysis{Dir: absDir, Files: files, ID: id, Project: project, Plan: plan}, nil
 }
 
 // Upper brings worlds up. Load and Run are the only ways it reaches Docker,
@@ -53,7 +61,7 @@ func Analyse(ctx context.Context, absDir string, load func(context.Context, stri
 type Upper struct {
 	Reg   *registry.Registry
 	Alloc ports.Allocator
-	Load  func(ctx context.Context, dir string) ([]byte, error)
+	Load  Loader
 	// Run runs `docker <args>` in dir, streaming output to log.
 	Run func(ctx context.Context, dir string, log io.Writer, args ...string) error
 	Log io.Writer
@@ -107,10 +115,6 @@ func (u *Upper) Up(ctx context.Context, absDir string) (*UpResult, error) {
 		}
 		return nil, fmt.Errorf("%s cannot be isolated as is (see errors above); nothing was created", absDir)
 	}
-	files, err := compose.DefaultFiles(absDir)
-	if err != nil {
-		return nil, err
-	}
 
 	keys := make([]string, len(a.Plan.Ports))
 	for i, r := range a.Plan.Ports {
@@ -141,7 +145,7 @@ func (u *Upper) Up(ctx context.Context, absDir string) (*UpResult, error) {
 	}
 
 	args := []string{"compose", "-p", a.Project, "--project-directory", absDir}
-	for _, f := range files {
+	for _, f := range a.Files {
 		args = append(args, "-f", f)
 	}
 	args = append(args, "-f", ovPath, "up", "-d", "--wait")

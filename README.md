@@ -75,8 +75,12 @@ No releases yet. Build from source:
 ```sh
 git clone https://github.com/iam-mkd/WorldTree.git
 cd WorldTree
-make build            # -> bin/worldtree  (or: go build -o bin/worldtree ./cmd/worldtree)
+go install ./cmd/worldtree    # -> $(go env GOPATH)/bin/worldtree
 ```
+
+`go install` puts the binary in `$(go env GOPATH)/bin` (usually `~/go/bin`); make sure that directory is on
+your `PATH` so `worldtree` runs from any worktree. Alternatively, `make build` writes `bin/worldtree` in the
+clone; then add the clone's absolute `bin/` path to `PATH` or call the binary by its full path.
 
 Homebrew tap and release binaries are planned for v0.1.0.
 
@@ -86,8 +90,12 @@ From a worktree that contains a compose project:
 
 ```sh
 worldtree render      # dry run: print the override, the ports it would lease, and any findings
-worldtree up          # create (or reconcile) this worktree's world and wait until it is healthy
+worldtree up          # create (or reconcile) this worktree's world and wait for it to start
 ```
+
+`up` waits with `docker compose up --wait`: services that define a `healthcheck` must report healthy;
+services without one count as started once their container is running, which can be before the app
+inside is ready. Add healthchecks to the services your agent depends on.
 
 `render` on the bundled Spring Boot sample ([`testdata/compose/spring-notes`](testdata/compose/spring-notes)):
 
@@ -119,14 +127,22 @@ world 685b5880 ready: project wt-agent-b-685b5880
   redis                *:27751 -> container 6379/tcp
 ```
 
-Until `down` lands, remove a world with `docker compose -p <project> down -v`.
+Until `worldtree down` lands, stop a world's containers with Docker directly:
+
+```sh
+docker compose -p <project> down      # removes containers and networks, keeps volumes (database data)
+docker compose -p <project> down -v   # also deletes the world's named volumes, including its database
+```
+
+Either way this removes Docker resources only: the world's registry entry and its port leases stay
+until `worldtree down` (or `gc`) exists to release them.
 
 ## Commands
 
 | Command | Status | What it does |
 |---|---|---|
 | `worldtree render [dir]` | available | Print the override, leased ports (dry run) and findings; touches nothing |
-| `worldtree up [dir]` | available | Create or reconcile the world; `docker compose up -d --wait` |
+| `worldtree up [dir]` | available | Create or reconcile the world; `docker compose up -d --wait` (healthchecks decide readiness) |
 | `worldtree version` | available | Print version, commit and platform |
 | `worldtree down [dir]` | planned | Remove the world's containers, networks, volumes, ports and files |
 | `worldtree ps` | planned | List worlds with their ports, phase and health |
