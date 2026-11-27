@@ -7,7 +7,7 @@
 networks, volumes, Postgres and Redis. Run two or three agents (Claude Code, Codex, Cursor) on the same
 app at once without them fighting over `5432`, sharing a database, or leaving orphaned containers behind.
 
-> **Status: pre-alpha, under active development.** `render` and `up` work today; `down`, `ps`, `env`,
+> **Status: pre-alpha, under active development.** `render`, `up`, `down` and `ps` work today; `env`,
 > `gc` and `doctor --prove` are being built (see [Roadmap](#roadmap)). There are no releases yet; build
 > from source. Interfaces may change.
 
@@ -127,15 +127,22 @@ world 685b5880 ready: project wt-agent-b-685b5880
   redis                *:27751 -> container 6379/tcp
 ```
 
-Until `worldtree down` lands, stop a world's containers with Docker directly:
+See every world, then remove one when its agent is done:
 
-```sh
-docker compose -p <project> down      # removes containers and networks, keeps volumes (database data)
-docker compose -p <project> down -v   # also deletes the world's named volumes, including its database
+```text
+$ worldtree ps
+ID        PHASE  CONTAINERS   PORTS                                 DIR
+153adea6  ready  3/3 running  app:28743 postgres:28744 redis:28745  /work/agent-a
+10066047  ready  3/3 running  app:25305 postgres:25306 redis:25307  /work/agent-b  (missing: run `worldtree down /work/agent-b`)
+
+$ worldtree down /work/agent-b
+world 10066047 removed: project wt-agent-b-10066047
 ```
 
-Either way this removes Docker resources only: the world's registry entry and its port leases stay
-until `worldtree down` (or `gc`) exists to release them.
+`down` deletes the world's containers, networks and **named volumes, including its database**, then
+releases its ports, its registry record and `<dir>/.worldtree`. Your compose files are never touched.
+It works even after the worktree directory was deleted (as for `agent-b` above), and re-running it is
+harmless.
 
 ## Commands
 
@@ -144,8 +151,8 @@ until `worldtree down` (or `gc`) exists to release them.
 | `worldtree render [dir]` | available | Print the override, leased ports (dry run) and findings; touches nothing |
 | `worldtree up [dir]` | available | Create or reconcile the world; `docker compose up -d --wait` (healthchecks decide readiness) |
 | `worldtree version` | available | Print version, commit and platform |
-| `worldtree down [dir]` | planned | Remove the world's containers, networks, volumes, ports and files |
-| `worldtree ps` | planned | List worlds with their ports, phase and health |
+| `worldtree down [dir]` | available | Remove the world's containers, networks, volumes (incl. its database), ports, registry record and `.worldtree/`; works after the dir is deleted |
+| `worldtree ps` | available | List worlds with phase, running containers, ports and dir; flags worlds whose dir is gone |
 | `worldtree env [dir]` | planned | Print `DATABASE_URL`, `SPRING_DATASOURCE_*`, `REDIS_URL`, per-service ports |
 | `worldtree gc [--yes]` | planned | Find and remove orphaned worlds, containers, volumes, networks and leases |
 | `worldtree doctor --prove` | planned | Prove isolation: sentinel row/key written in world A is absent in B, ports and volumes not shared |
@@ -154,7 +161,7 @@ until `worldtree down` (or `gc`) exists to release them.
 ## Using it with worktrunk
 
 WorldTree does not create worktrees; [worktrunk](https://github.com/max-sixty/worktrunk) (or any script) does.
-Once `down` and `init` land, the integration is two blocking hooks in `.config/wt.toml`:
+The integration is two blocking hooks in `.config/wt.toml` (add them by hand until `worldtree init` lands):
 
 ```toml
 pre-start  = "worldtree up"      # pre-* hooks block, so the agent never races a half-started stack
@@ -210,7 +217,7 @@ the world's directory, Postgres data (separate server), Redis data (separate ser
 ## Roadmap
 
 The 14-day MVP plan is in [`PLAN.md`](PLAN.md), the design in [`ARCHITECTURE.md`](ARCHITECTURE.md), and
-the reasoning behind each choice in [`DECISIONS.md`](DECISIONS.md). Next: `down` + `ps`, `env`, a real-Docker
+the reasoning behind each choice in [`DECISIONS.md`](DECISIONS.md). Next: `env`, a real-Docker
 integration test in CI, crash reconcile, `gc`, `doctor --prove`, worktrunk `init`, then v0.1.0 with
 Homebrew and release binaries.
 

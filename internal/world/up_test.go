@@ -47,9 +47,10 @@ func newTestUpper(t *testing.T, cfg string) (*Upper, *fakeDocker) {
 			fd.loaded = files
 			return []byte(cfg), nil
 		},
-		Run: fd.run,
-		Log: io.Discard,
-		Now: func() time.Time { return time.Unix(0, 0) },
+		Run:   fd.run,
+		Query: func(context.Context, ...string) ([]byte, error) { return nil, nil },
+		Log:   io.Discard,
+		Now:   func() time.Time { return time.Unix(0, 0) },
 
 		LockTimeout: time.Second,
 	}, fd

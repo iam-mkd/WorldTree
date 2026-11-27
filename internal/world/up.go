@@ -64,15 +64,17 @@ type Upper struct {
 	Load  Loader
 	// Run runs `docker <args>` in dir, streaming output to log.
 	Run func(ctx context.Context, dir string, log io.Writer, args ...string) error
-	Log io.Writer
-	Now func() time.Time
+	// Query runs `docker <args>` and returns stdout.
+	Query func(ctx context.Context, args ...string) ([]byte, error)
+	Log   io.Writer
+	Now   func() time.Time
 	// LockTimeout bounds the wait for another `up`/`down` of the same world.
 	LockTimeout time.Duration
 }
 
 // NewUpper returns an Upper wired to the real registry, allocator and docker CLI.
 func NewUpper(reg *registry.Registry, log io.Writer) *Upper {
-	return &Upper{Reg: reg, Alloc: ports.Default(), Load: compose.LoadConfig, Run: runDocker, Log: log,
+	return &Upper{Reg: reg, Alloc: ports.Default(), Load: compose.LoadConfig, Run: runDocker, Query: queryDocker, Log: log,
 		Now: time.Now, LockTimeout: 15 * time.Minute} // a first `up` can spend minutes building images
 }
 
@@ -102,6 +104,9 @@ func (u *Upper) Up(ctx context.Context, absDir string) (*UpResult, error) {
 		return nil, err
 	}
 	defer unlock()
+	if err := ensureNoCleanup(ctx, u.Query, ID(absDir)); err != nil {
+		return nil, err
+	}
 
 	a, err := Analyse(ctx, absDir, u.Load)
 	if err != nil {
