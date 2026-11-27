@@ -204,13 +204,37 @@ func TestDownDeletesContainerOwnedFilesFromAContainer(t *testing.T) {
 	}
 	gen := filepath.Join(dir, ".worldtree")
 	want := "run --rm --name " + CleanupContainer(up.ID) + " --label dev.worldtree.world=" + up.ID +
-		" -v " + gen + ":/w " + CleanupImage + " find /w -mindepth 1 -delete"
+		" --label " + LabelCleanup + "=true -v " + gen + ":/w " + CleanupImage + " find /w -mindepth 1 -delete"
 	if len(*calls) != 2 || (*calls)[1].args != want {
 		t.Fatalf("docker calls = %v\nwant second = %q", *calls, want)
 	}
 	if len(load(t, u.Reg).Worlds) != 0 {
 		t.Error("world not removed after container cleanup")
 	}
+}
+
+// cleanupQuery fakes `docker ps` / `docker rm -f` for one cleanup container: it is listed
+// until removed, and with survive it is still listed after `rm -f`.
+type cleanupQuery struct {
+	present, survive bool
+	calls            []string
+}
+
+func (c *cleanupQuery) query(ctx context.Context, args ...string) ([]byte, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	call := strings.Join(args, " ")
+	c.calls = append(c.calls, call)
+	switch {
+	case args[0] == "rm":
+		if !c.survive {
+			c.present = false
+		}
+	case strings.Contains(call, "label="+LabelCleanup+"=true") && c.present:
+		return []byte("cafe01\n"), nil
+	}
+	return nil, nil
 }
 
 func TestDownKeepsRecordWhenCleanupFails(t *testing.T) {
@@ -220,55 +244,92 @@ func TestDownKeepsRecordWhenCleanupFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	d, _, _ := newTestDowner(u.Reg)
 	d.RemoveAll = permDenied(10)
-	var removed []string
-	d.Run = func(ctx context.Context, _ string, _ io.Writer, args ...string) error {
-		switch args[0] {
-		case "run":
-			return errors.New("cannot pull alpine")
-		case "rm":
-			if ctx.Err() != nil {
-				t.Error("cleanup container removed with a cancelled context")
-			}
-			removed = append(removed, strings.Join(args, " "))
+	cq := &cleanupQuery{present: true} // the killed docker client left the container running
+	d.Query = func(qctx context.Context, args ...string) ([]byte, error) {
+		if args[0] == "ps" && !strings.Contains(strings.Join(args, " "), LabelCleanup) {
+			return nil, nil // sweep: nothing left
+		}
+		return cq.query(qctx, args...)
+	}
+	d.Run = func(_ context.Context, _ string, _ io.Writer, args ...string) error {
+		if args[0] == "run" {
+			cancel() // worldtree interrupted mid-cleanup
+			return errors.New("signal: killed")
 		}
 		return nil
 	}
-	if _, err := d.Down(context.Background(), dir); err == nil || !errors.Is(err, fs.ErrPermission) {
+	if _, err := d.Down(ctx, dir); err == nil || !errors.Is(err, fs.ErrPermission) {
 		t.Fatalf("err = %v, want permission error", err)
+	}
+	if cq.present {
+		t.Error("cleanup container still present when down returned (lock released)")
+	}
+	if !strings.Contains(strings.Join(cq.calls, "\n"), "rm -f cafe01") {
+		t.Errorf("cleanup container not force-removed despite cancelled ctx: %v", cq.calls)
 	}
 	st := load(t, u.Reg)
 	if w := st.Worlds[up.ID]; w == nil || w.Phase != registry.Removing || len(st.LeasesOf(up.ID)) == 0 {
 		t.Errorf("world = %+v leases = %v; want removing with leases kept", w, st.LeasesOf(up.ID))
 	}
-	if want := "rm -f " + CleanupContainer(up.ID); len(removed) != 1 || removed[0] != want {
-		t.Errorf("after failed cleanup removed %v, want [%q]", removed, want)
-	}
 }
 
-func TestUpRemovesStaleCleanupContainerOfRemovingWorld(t *testing.T) {
-	u, fd := newTestUpper(t, colliding)
+func TestDownReportsCleanupContainerThatSurvivesRemoval(t *testing.T) {
+	u, _ := newTestUpper(t, colliding)
 	dir := projectDir(t, "docker-compose.yml")
 	if _, err := u.Up(context.Background(), dir); err != nil {
 		t.Fatal(err)
 	}
-	id := ID(dir)
-	// A down died mid-cleanup: the world is still removing.
-	if err := u.Reg.Update(func(s *registry.State) error {
-		w := *s.Worlds[id]
-		w.Phase = registry.Removing
-		s.Put(w, time.Unix(0, 0))
-		return nil
-	}); err != nil {
-		t.Fatal(err)
+	d, _, _ := newTestDowner(u.Reg)
+	d.RemoveAll = permDenied(10)
+	cq := &cleanupQuery{present: true, survive: true}
+	d.Query = func(ctx context.Context, args ...string) ([]byte, error) {
+		if args[0] == "ps" && !strings.Contains(strings.Join(args, " "), LabelCleanup) {
+			return nil, nil
+		}
+		return cq.query(ctx, args...)
 	}
-	fd.calls = nil
+	d.Run = func(_ context.Context, _ string, _ io.Writer, args ...string) error {
+		if args[0] == "run" {
+			return errors.New("killed")
+		}
+		return nil
+	}
+	if _, err := d.Down(context.Background(), dir); err == nil || !strings.Contains(err.Error(), "still present") {
+		t.Fatalf("err = %v, want 'still present'", err)
+	}
+}
+
+func TestUpRemovesLeftoverCleanupContainerEvenForUnregisteredWorld(t *testing.T) {
+	u, fd := newTestUpper(t, colliding)
+	cq := &cleanupQuery{present: true} // a down of an unregistered world died mid-cleanup
+	u.Query = cq.query
+	dir := projectDir(t, "docker-compose.yml")
 	if _, err := u.Up(context.Background(), dir); err != nil {
 		t.Fatal(err)
 	}
-	if len(fd.calls) != 2 || strings.Join(fd.calls[0], " ") != "rm -f "+CleanupContainer(id) {
-		t.Errorf("docker calls = %v; want stale cleanup container removed before compose up", fd.calls)
+	if cq.present || !strings.Contains(strings.Join(cq.calls, "\n"), "rm -f cafe01") {
+		t.Errorf("leftover cleanup container not removed: %v", cq.calls)
+	}
+	if len(fd.calls) != 1 {
+		t.Errorf("compose calls = %v, want compose up after the check", fd.calls)
+	}
+}
+
+func TestUpRefusesWhileCleanupContainerSurvives(t *testing.T) {
+	u, fd := newTestUpper(t, colliding)
+	u.Query = (&cleanupQuery{present: true, survive: true}).query
+	dir := projectDir(t, "docker-compose.yml")
+	if _, err := u.Up(context.Background(), dir); err == nil || !strings.Contains(err.Error(), "still present") {
+		t.Fatalf("err = %v, want refusal", err)
+	}
+	if len(fd.calls) != 0 || len(load(t, u.Reg).Worlds) != 0 {
+		t.Errorf("up proceeded: calls=%v", fd.calls)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".worldtree")); !os.IsNotExist(err) {
+		t.Errorf("up wrote files while a cleanup container may run: %v", err)
 	}
 }
 
