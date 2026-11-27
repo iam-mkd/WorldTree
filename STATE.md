@@ -14,14 +14,17 @@
 ## Progress (PLAN.md)
 - Day 1 (scaffold, cobra, `worldtree version`, Makefile, CI on 3 OSes, testdata) — merged (PR #1).
 - Day 2 (`internal/compose`: plan + render + golden tests + real-compose acceptance test; `worldtree render`)
-  — done on branch `day-01-scaffold-54ed7n` (name fixed by the cloud session; holds Day 2 only, rebased on main).
+  — merged (PR #2).
+- Day 3 (`internal/registry` JSON + flock + atomic write; `internal/ports` 4-address TCP/UDP probe + hashed-start
+  allocator; `render` uses it as a dry run) — branch `day-01-scaffold-54ed7n` (name fixed by the cloud session).
 
 ## Workflow
 - Repo: https://github.com/iam-mkd/WorldTree (public). Initial commits pushed to `main` on 2026-11-26.
 - From now on: every change goes on a branch + PR; never push to `main` directly.
 
 ## Next
-- Day 3: `internal/registry` (JSON + flock, atomic write) + `internal/ports` (allocator, 4-address probe).
+- Day 4: `up` v1: register intent -> lease -> render -> `compose up -d --wait` -> mark ready. Needs a Docker
+  daemon; the cloud container has none, so Day 4 needs your machine or CI to run it for real.
 
 ## Open questions
 - Licence for WorldTree (MIT / Apache-2.0?) and whether AGPL/GPL compose files may be used as testdata.
