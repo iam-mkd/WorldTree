@@ -35,7 +35,7 @@
   (busy) port and fails again. Fix candidate: on compose "port is already allocated", release that lease and retry.
 
 ## Open questions
-- Licence for WorldTree (MIT / Apache-2.0?) and whether AGPL/GPL compose files may be used as testdata.
+- Licence decided: Apache-2.0 (2026-11-27). Still open: may AGPL/GPL compose files be committed as testdata?
 - Installing worktrunk for Day 11 end-to-end test needs approval.
 - Unverified on macOS and with real worktrunk. Day 2 ran on Linux (cloud container: Compose v5.7.1, no Docker daemon,
   so only `compose config` was exercised; containers were not started).

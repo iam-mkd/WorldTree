@@ -211,4 +211,4 @@ Windows.
 
 ## License
 
-Not chosen yet. Until a license file is added, no license is granted.
+Copyright 2026 The WorldTree Authors. Licensed under the [Apache License, Version 2.0](LICENSE).
