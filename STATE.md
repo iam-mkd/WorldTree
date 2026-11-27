@@ -18,20 +18,19 @@
 - Day 3 (`internal/registry` JSON + flock + atomic write; `internal/ports` 4-address TCP/UDP probe + hashed-start
   allocator; `render` uses it as a dry run) — merged (PR #3).
 - Day 4 (`up`; per-world lock; compose-go .env parsing; files resolved once; README; Apache-2.0) — merged (PR #4).
-- Day 5 (`down`: lock -> `removing` -> `compose -p down -v --remove-orphans` from a neutral dir -> label sweep ->
-  rm `.worldtree` -> registry remove; works on deleted dirs, idempotent. `ps`: registry + one `docker ps`, flags
-  missing dirs) — branch `day-05-down-ps`. Real-Docker demo passed: 2 worlds, `rm -rf` one, `ps` flags it,
-  `down` both, 0 labelled resources and empty registry left; user's own containers untouched.
+- Day 5 (`down` + `ps`; cleanup-container safety) — merged (PR #5).
+- Day 6 (`internal/envfile`: ports, DATABASE_URL, SPRING_DATASOURCE_*, REDIS_URL; `up` writes `.worldtree/env`
+  0600; `worldtree env --format dotenv|sh|powershell`) — branch `day-06-env`. Demo passed: host-run Spring jar
+  with only `eval "$(worldtree env --format sh)"` wrote into world B, world A empty; PowerShell format loads.
 
 ## Workflow
 - Repo: https://github.com/iam-mkd/WorldTree (public). Initial commits pushed to `main` on 2026-11-26.
 - From now on: every change goes on a branch + PR; never push to `main` directly.
 
 ## Next
-- Day 6: `envfile` + `worldtree env` (per-service ports, DATABASE_URL, SPRING_DATASOURCE_*, REDIS_URL); demo:
-  Spring app on the host against world B.
+- Day 7: integration harness (real Docker, build tag `integration`) + ubuntu CI job: two worlds of spring-notes,
+  isolation asserted; also exercises `down`'s Linux permission fallback for real.
 - Known gap: a port grabbed by a non-worldtree process after leasing makes every re-run of `up` fail on it.
-  Fix candidate: on compose "port is already allocated", release that lease and retry.
 
 ## Open questions
 - Licence decided: Apache-2.0 (2026-11-27). Still open: may AGPL/GPL compose files be committed as testdata?

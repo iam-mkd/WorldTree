@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -121,8 +122,21 @@ func TestUpRegistersLeasesWritesOverrideAndRunsCompose(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	if strings.Join(names, ",") != ".gitignore,compose.override.yml" {
-		t.Errorf(".worldtree holds %v; want only .gitignore and compose.override.yml (no temp files)", names)
+	if strings.Join(names, ",") != ".gitignore,compose.override.yml,env" {
+		t.Errorf(".worldtree holds %v; want only .gitignore, compose.override.yml and env (no temp files)", names)
+	}
+	envData, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(EnvPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(envData), "WORLDTREE_PORT_DB_5432='"+strconv.Itoa(port)+"'") ||
+		!strings.Contains(string(envData), "DATABASE_URL='postgres://postgres@127.0.0.1:"+strconv.Itoa(port)+"/postgres'") {
+		t.Errorf("env file lacks port/database vars:\n%s", envData)
+	}
+	if st, err := os.Stat(filepath.Join(dir, filepath.FromSlash(EnvPath))); err != nil {
+		t.Fatal(err)
+	} else if runtime.GOOS != "windows" && st.Mode().Perm() != 0o600 {
+		t.Errorf("env file mode = %v, want 0600 (it holds the database password)", st.Mode().Perm())
 	}
 
 	if len(fd.calls) != 1 {

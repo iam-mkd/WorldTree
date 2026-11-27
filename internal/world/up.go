@@ -11,12 +11,17 @@ import (
 	"time"
 
 	"github.com/iam-mkd/WorldTree/internal/compose"
+	"github.com/iam-mkd/WorldTree/internal/envfile"
 	"github.com/iam-mkd/WorldTree/internal/ports"
 	"github.com/iam-mkd/WorldTree/internal/registry"
 )
 
 // OverridePath is where `up` writes the world's compose override, relative to the world dir.
 const OverridePath = ".worldtree/compose.override.yml"
+
+// EnvPath is where `up` writes the world's environment (envfile.Render), relative to the
+// world dir. It holds the database password, so it is written with mode 0600.
+const EnvPath = ".worldtree/env"
 
 // Analysis is a compose project analysed for one world.
 type Analysis struct {
@@ -25,6 +30,7 @@ type Analysis struct {
 	ID      string
 	Project string
 	Plan    *compose.Plan
+	Config  *compose.Config // the normalised compose model (holds resolved secrets: memory only)
 }
 
 // Loader runs `docker compose config` for dir with exactly files (compose.LoadConfig).
@@ -53,7 +59,7 @@ func Analyse(ctx context.Context, absDir string, load Loader) (*Analysis, error)
 	if err != nil {
 		return nil, err
 	}
-	return &Analysis{Dir: absDir, Files: files, ID: id, Project: project, Plan: plan}, nil
+	return &Analysis{Dir: absDir, Files: files, ID: id, Project: project, Plan: plan, Config: cfg}, nil
 }
 
 // Upper brings worlds up. Load and Run are the only ways it reaches Docker,
@@ -141,11 +147,17 @@ func (u *Upper) Up(ctx context.Context, absDir string) (*UpResult, error) {
 		return nil, err
 	}
 	ovPath := filepath.Join(absDir, filepath.FromSlash(OverridePath))
-	if err := writeIfChanged(ovPath, override); err != nil {
+	if err := writeIfChanged(ovPath, override, 0o644); err != nil {
 		return nil, err
 	}
 	// Self-ignoring dir: the world's files never show up in the user's `git status`.
-	if err := writeIfChanged(filepath.Join(filepath.Dir(ovPath), ".gitignore"), []byte("*\n")); err != nil {
+	if err := writeIfChanged(filepath.Join(filepath.Dir(ovPath), ".gitignore"), []byte("*\n"), 0o644); err != nil {
+		return nil, err
+	}
+	env := envfile.Render(envfile.Build(envfile.World{
+		ID: a.ID, Project: a.Project, Config: a.Config, Ports: a.Plan.Ports, Leases: leases,
+	}))
+	if err := writeIfChanged(filepath.Join(absDir, filepath.FromSlash(EnvPath)), env, 0o600); err != nil {
 		return nil, err
 	}
 
@@ -174,9 +186,11 @@ func (u *Upper) Up(ctx context.Context, absDir string) (*UpResult, error) {
 	return &UpResult{Analysis: a, Leases: leases}, nil
 }
 
-func writeIfChanged(path string, data []byte) error {
-	if old, err := os.ReadFile(path); err == nil && string(old) == string(data) {
-		return nil
+func writeIfChanged(path string, data []byte, mode os.FileMode) error {
+	if st, err := os.Stat(path); err == nil && st.Mode().Perm() == mode {
+		if old, err := os.ReadFile(path); err == nil && string(old) == string(data) {
+			return nil
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -192,7 +206,7 @@ func writeIfChanged(path string, data []byte) error {
 		_ = os.Remove(tmp)
 		return err
 	}
-	if err := os.Chmod(tmp, 0o644); err != nil { // CreateTemp makes 0600
+	if err := os.Chmod(tmp, mode); err != nil { // CreateTemp makes 0600
 		_ = os.Remove(tmp)
 		return err
 	}

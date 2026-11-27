@@ -62,3 +62,11 @@
 - `LICENSE` is the verbatim text from apache.org; copyright holder "The WorldTree Authors".
 - Versus MIT it adds an explicit patent grant. Still open: whether the AGPL/GPL
   compose files from Spike B may be committed as testdata (they are not, today).
+
+## 2026-11-27 — World environment lives in `.worldtree/env`, not `.env.worldtree` (Day 6)
+- The brief named `<dir>/.env.worldtree`; that file would show as untracked in every user repo. `.worldtree/`
+  already ignores itself and is deleted by `down`, so the env file goes there (mode 0600: it holds the
+  Postgres password). `worldtree env` prints it as dotenv, sh or PowerShell.
+- Spring Boot binds `SPRING_*` names only from real environment variables, so the shell formats are the
+  supported way to feed a host-run Spring app; dotenv suits direnv/compose-style loaders.
+- Detection is by image name (postgres/postgis/pgvector, redis/valkey/keydb) plus a published standard port.

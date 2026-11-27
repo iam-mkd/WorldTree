@@ -56,6 +56,7 @@ the world summary goes to stdout.`,
 				}
 				fmt.Fprintf(out, "  %-20s %s:%d -> container %d/%s\n", r.Service, host, res.Leases[r.Key], r.Port.Target, r.Port.Protocol)
 			}
+			fmt.Fprintf(out, "env: %s (print with `worldtree env`)\n", filepath.Join(abs, filepath.FromSlash(world.EnvPath)))
 			return nil
 		},
 	}
