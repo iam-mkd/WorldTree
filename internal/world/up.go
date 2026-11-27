@@ -2,6 +2,7 @@ package world
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -57,11 +58,14 @@ type Upper struct {
 	Run func(ctx context.Context, dir string, log io.Writer, args ...string) error
 	Log io.Writer
 	Now func() time.Time
+	// LockTimeout bounds the wait for another `up`/`down` of the same world.
+	LockTimeout time.Duration
 }
 
 // NewUpper returns an Upper wired to the real registry, allocator and docker CLI.
 func NewUpper(reg *registry.Registry, log io.Writer) *Upper {
-	return &Upper{Reg: reg, Alloc: ports.Default(), Load: compose.LoadConfig, Run: runDocker, Log: log, Now: time.Now}
+	return &Upper{Reg: reg, Alloc: ports.Default(), Load: compose.LoadConfig, Run: runDocker, Log: log,
+		Now: time.Now, LockTimeout: 15 * time.Minute} // a first `up` can spend minutes building images
 }
 
 // UpResult describes a world after a successful `up`.
@@ -81,7 +85,16 @@ type UpResult struct {
 //  5. mark the world `ready`
 //
 // If step 4 fails the world stays `creating` with its leases; re-run `up` or `gc` it.
+//
+// The whole sequence holds the per-world lock, so two `up`s of one dir cannot interleave
+// (one could otherwise release a lease the other's containers are about to publish).
 func (u *Upper) Up(ctx context.Context, absDir string) (*UpResult, error) {
+	unlock, err := u.Reg.LockWorld(ID(absDir), u.LockTimeout)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+
 	a, err := Analyse(ctx, absDir, u.Load)
 	if err != nil {
 		return nil, err
@@ -159,11 +172,26 @@ func writeIfChanged(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	tmp := f.Name()
+	_, werr := f.Write(data)
+	cerr := f.Close()
+	if err := errors.Join(werr, cerr); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Chmod(tmp, 0o644); err != nil { // CreateTemp makes 0600
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 func runDocker(ctx context.Context, dir string, log io.Writer, args ...string) error {

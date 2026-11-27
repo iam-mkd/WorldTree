@@ -46,6 +46,8 @@ func newTestUpper(t *testing.T, cfg string) (*Upper, *fakeDocker) {
 		Run:   fd.run,
 		Log:   io.Discard,
 		Now:   func() time.Time { return time.Unix(0, 0) },
+
+		LockTimeout: time.Second,
 	}, fd
 }
 
@@ -104,6 +106,18 @@ func TestUpRegistersLeasesWritesOverrideAndRunsCompose(t *testing.T) {
 
 	if gi, err := os.ReadFile(filepath.Join(dir, ".worldtree", ".gitignore")); err != nil || string(gi) != "*\n" {
 		t.Errorf(".worldtree/.gitignore = %q, %v; want \"*\\n\"", gi, err)
+	}
+
+	entries, err := os.ReadDir(filepath.Join(dir, ".worldtree"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if strings.Join(names, ",") != ".gitignore,compose.override.yml" {
+		t.Errorf(".worldtree holds %v; want only .gitignore and compose.override.yml (no temp files)", names)
 	}
 
 	if len(fd.calls) != 1 {
@@ -193,6 +207,29 @@ func TestUpRefusesUnisolatableProjectWithoutSideEffects(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".worldtree")); !os.IsNotExist(err) {
 		t.Errorf(".worldtree created for refused project: %v", err)
+	}
+}
+
+func TestUpWaitsForBusyWorldAndGivesUp(t *testing.T) {
+	u, fd := newTestUpper(t, colliding)
+	u.LockTimeout = 50 * time.Millisecond
+	dir := projectDir(t, "docker-compose.yml")
+
+	unlock, err := u.Reg.LockWorld(ID(dir), time.Second) // another up/down in flight
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = u.Up(context.Background(), dir)
+	if err == nil || !strings.Contains(err.Error(), "busy") {
+		t.Fatalf("err = %v, want busy world", err)
+	}
+	if len(fd.calls) != 0 || len(load(t, u.Reg).Worlds) != 0 {
+		t.Errorf("busy up had side effects: calls=%v", fd.calls)
+	}
+
+	unlock()
+	if _, err := u.Up(context.Background(), dir); err != nil {
+		t.Fatalf("up after unlock: %v", err)
 	}
 }
 

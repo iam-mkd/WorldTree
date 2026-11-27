@@ -19,9 +19,20 @@ var MinVersion = [2]int{2, 24}
 // Compose resolves include, extends, anchors, .env interpolation and relative paths.
 // The output can contain resolved secrets: callers keep it in memory only.
 // It does not need a running Docker daemon.
+//
+// The files are passed explicitly from DefaultFiles, so analysis and `up` always see
+// exactly the same inputs.
 func LoadConfig(ctx context.Context, dir string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "--project-directory", dir,
-		"--profile", "*", "config", "--format", "json")
+	files, err := DefaultFiles(dir)
+	if err != nil {
+		return nil, err
+	}
+	args := []string{"compose", "--project-directory", dir}
+	for _, f := range files {
+		args = append(args, "-f", f)
+	}
+	args = append(args, "--profile", "*", "config", "--format", "json")
+	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Dir = dir
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
@@ -34,10 +45,21 @@ func LoadConfig(ctx context.Context, dir string) ([]byte, error) {
 // DefaultFiles returns the compose files `docker compose` would load in dir, in order.
 // Passing `-f` turns compose's own discovery off, so worldtree must list them itself,
 // or a project's docker-compose.override.yml would silently be dropped.
-// COMPOSE_FILE is honoured like compose does (relative entries resolve against dir).
+// COMPOSE_FILE and COMPOSE_PATH_SEPARATOR are honoured like compose does: from the
+// process environment, else from <dir>/.env; relative entries resolve against dir.
+//
+// Unlike compose, parent directories are not searched: a world is identified by its
+// directory, so running from a subdirectory would create a second world for one stack.
 func DefaultFiles(dir string) ([]string, error) {
-	if env := os.Getenv("COMPOSE_FILE"); env != "" {
-		sep := os.Getenv("COMPOSE_PATH_SEPARATOR")
+	dotenv := readDotEnv(filepath.Join(dir, ".env"))
+	setting := func(key string) string {
+		if v := os.Getenv(key); v != "" {
+			return v
+		}
+		return dotenv[key]
+	}
+	if env := setting("COMPOSE_FILE"); env != "" {
+		sep := setting("COMPOSE_PATH_SEPARATOR")
 		if sep == "" {
 			sep = string(os.PathListSeparator)
 		}
@@ -70,6 +92,33 @@ func DefaultFiles(dir string) ([]string, error) {
 		files = append(files, ov)
 	}
 	return files, nil
+}
+
+// readDotEnv returns the KEY=VALUE pairs of a compose .env file (missing file: empty).
+// It handles comments, blank lines, an `export ` prefix and matching quotes; values are
+// not interpolated, which is enough for COMPOSE_FILE / COMPOSE_PATH_SEPARATOR.
+func readDotEnv(path string) map[string]string {
+	m := map[string]string{}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return m
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(strings.TrimPrefix(line, "export "), "=")
+		if !ok {
+			continue
+		}
+		v = strings.TrimSpace(v)
+		if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
+			v = v[1 : len(v)-1]
+		}
+		m[strings.TrimSpace(k)] = v
+	}
+	return m
 }
 
 func fileExists(p string) bool {

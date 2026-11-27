@@ -53,6 +53,34 @@ func TestDefaultFilesNone(t *testing.T) {
 	}
 }
 
+func TestDefaultFilesReadsComposeFileFromDotEnv(t *testing.T) {
+	t.Setenv("COMPOSE_FILE", "")
+	t.Setenv("COMPOSE_PATH_SEPARATOR", "")
+	dir := t.TempDir()
+	touch(t, dir, "docker-compose.yml") // must be ignored: .env names other files
+	env := "# settings\nexport COMPOSE_PATH_SEPARATOR=';'\nCOMPOSE_FILE=\"dev.yml;extra.yml\"\n"
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(env), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := DefaultFiles(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{filepath.Join(dir, "dev.yml"), filepath.Join(dir, "extra.yml")}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+
+	t.Setenv("COMPOSE_FILE", "proc.yml") // process env beats .env
+	got, err = DefaultFiles(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{filepath.Join(dir, "proc.yml")}; !reflect.DeepEqual(got, want) {
+		t.Errorf("process env: got %v, want %v", got, want)
+	}
+}
+
 func TestDefaultFilesHonoursComposeFile(t *testing.T) {
 	dir := t.TempDir()
 	abs := filepath.Join(t.TempDir(), "other.yml")
