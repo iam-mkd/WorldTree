@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -27,6 +29,52 @@ func LoadConfig(ctx context.Context, dir string) ([]byte, error) {
 		return nil, fmt.Errorf("docker compose config in %s: %w: %s", dir, err, strings.TrimSpace(errb.String()))
 	}
 	return out.Bytes(), nil
+}
+
+// DefaultFiles returns the compose files `docker compose` would load in dir, in order.
+// Passing `-f` turns compose's own discovery off, so worldtree must list them itself,
+// or a project's docker-compose.override.yml would silently be dropped.
+// COMPOSE_FILE is honoured like compose does (relative entries resolve against dir).
+func DefaultFiles(dir string) ([]string, error) {
+	if env := os.Getenv("COMPOSE_FILE"); env != "" {
+		sep := os.Getenv("COMPOSE_PATH_SEPARATOR")
+		if sep == "" {
+			sep = string(os.PathListSeparator)
+		}
+		var files []string
+		for _, f := range strings.Split(env, sep) {
+			if f == "" {
+				continue
+			}
+			if !filepath.IsAbs(f) {
+				f = filepath.Join(dir, f)
+			}
+			files = append(files, f)
+		}
+		return files, nil
+	}
+	first := func(names ...string) string {
+		for _, n := range names {
+			if p := filepath.Join(dir, n); fileExists(p) {
+				return p
+			}
+		}
+		return ""
+	}
+	main := first("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml")
+	if main == "" {
+		return nil, fmt.Errorf("no compose file (compose.yaml, docker-compose.yml, ...) in %s", dir)
+	}
+	files := []string{main}
+	if ov := first("compose.override.yaml", "compose.override.yml", "docker-compose.override.yaml", "docker-compose.override.yml"); ov != "" {
+		files = append(files, ov)
+	}
+	return files, nil
+}
+
+func fileExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && st.Mode().IsRegular()
 }
 
 // CheckVersion returns the installed Compose version, or an error if it is

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"time"
@@ -41,25 +40,12 @@ Exit status is 1 if any finding is an error (the project cannot be isolated as i
 			if _, err := compose.CheckVersion(ctx); err != nil {
 				return err
 			}
-			raw, err := compose.LoadConfig(ctx, abs)
+			a, err := world.Analyse(ctx, abs, compose.LoadConfig)
 			if err != nil {
 				return err
 			}
-			cfg, err := compose.ParseConfig(raw)
-			if err != nil {
-				return err
-			}
-			id := world.ID(abs)
-			plan, err := compose.NewPlan(cfg, compose.Options{
-				WorldID:    id,
-				Project:    world.ProjectName(filepath.Base(abs), id),
-				ProjectDir: abs,
-				IsFile:     isFile,
-			})
-			if err != nil {
-				return err
-			}
-			leases, err := dryRunLeases(plan, id, abs, portBase)
+			plan := a.Plan
+			leases, err := dryRunLeases(plan, a.ID, abs, portBase)
 			if err != nil {
 				return err
 			}
@@ -132,9 +118,4 @@ func dryRunLeases(plan *compose.Plan, id, dir string, base int) (map[string]int,
 		st.Put(registry.World{ID: id, Dir: dir, Phase: registry.Creating}, time.Now())
 	}
 	return st.Lease(id, keys, ports.Default())
-}
-
-func isFile(p string) bool {
-	st, err := os.Stat(p)
-	return err == nil && st.Mode().IsRegular()
 }
