@@ -121,8 +121,14 @@ func TestSuffixedPortKeyCannotShadowAnotherService(t *testing.T) {
 		}
 		got[v.Key] = v.Value
 	}
-	if len(got) != 3 {
-		t.Errorf("got %v, want 3 distinct keys", got)
+	// api_8080 keeps its unique plain key; api's second lease skips the reserved _2.
+	want := map[string]string{
+		"WORLDTREE_PORT_API_8080":   "1",
+		"WORLDTREE_PORT_API_8080_2": "3",
+		"WORLDTREE_PORT_API_8080_3": "2",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
 	}
 }
 

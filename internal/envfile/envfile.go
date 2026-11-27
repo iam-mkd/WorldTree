@@ -49,21 +49,31 @@ func Build(w World) []Var {
 		}
 		return ports[i].Key < ports[j].Key // stable order for same target on several host IPs
 	})
+	// Distinct leases can map to one name (same target on two host IPs; services "api-web"
+	// and "api_web"), and a suffixed name could equal another service's plain one ("api"
+	// 8080 #2 vs service "api_8080" target 2). So every plain name is reserved first: the
+	// first lease of each name keeps it, and only later leases of a shared name get the
+	// first suffix _2, _3... that is not any plain name or earlier suffix. The order above
+	// keeps the result stable.
+	bases := make([]string, len(ports))
 	used := map[string]bool{}
-	for _, r := range ports {
-		base := "WORLDTREE_PORT_" + envName(r.Service) + "_" + strconv.Itoa(int(r.Port.Target))
+	for i, r := range ports {
+		bases[i] = "WORLDTREE_PORT_" + envName(r.Service) + "_" + strconv.Itoa(int(r.Port.Target))
 		if r.Port.Protocol == "udp" {
-			base += "_UDP"
+			bases[i] += "_UDP"
 		}
-		// Distinct leases can map to one name (same target on two host IPs; services
-		// "api-web" and "api_web"), and a suffixed name can equal another service's plain
-		// one ("api" 8080 #2 vs service "api_8080" target 2). Take the first unused of
-		// base, base_2, base_3...; the order above keeps the result stable.
-		key := base
-		for n := 2; used[key]; n++ {
-			key = base + "_" + strconv.Itoa(n)
+		used[bases[i]] = true
+	}
+	plainTaken := map[string]bool{}
+	for i, r := range ports {
+		key := bases[i]
+		if plainTaken[key] {
+			for n := 2; used[key]; n++ {
+				key = bases[i] + "_" + strconv.Itoa(n)
+			}
+			used[key] = true
 		}
-		used[key] = true
+		plainTaken[bases[i]] = true
 		vars = append(vars, Var{key, strconv.Itoa(w.Leases[r.Key])})
 	}
 	if pg, ok := find(w, isPostgres, 5432); ok {
