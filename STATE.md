@@ -14,14 +14,24 @@
 ## Progress (PLAN.md)
 - Day 1 (scaffold, cobra, `worldtree version`, Makefile, CI on 3 OSes, testdata) — merged (PR #1).
 - Day 2 (`internal/compose`: plan + render + golden tests + real-compose acceptance test; `worldtree render`)
-  — done on branch `day-01-scaffold-54ed7n` (name fixed by the cloud session; holds Day 2 only, rebased on main).
+  — merged (PR #2).
+- Day 3 (`internal/registry` JSON + flock + atomic write; `internal/ports` 4-address TCP/UDP probe + hashed-start
+  allocator; `render` uses it as a dry run) — branch `day-01-scaffold-54ed7n` (name fixed by the cloud session).
 
 ## Workflow
 - Repo: https://github.com/iam-mkd/WorldTree (public). Initial commits pushed to `main` on 2026-11-26.
 - From now on: every change goes on a branch + PR; never push to `main` directly.
 
 ## Next
-- Day 3: `internal/registry` (JSON + flock, atomic write) + `internal/ports` (allocator, 4-address probe).
+- Day 4 runs on the user's machine (real Docker), not in the cloud session. Start from `main` after PR #3 merges.
+  `up` v1, in this order, each step idempotent:
+  1. `Update`: `Put` world (phase `creating`) — before any Docker call.
+  2. `LoadConfig` -> `NewPlan`; refuse if `HasErrors()`.
+  3. `Update`: `Lease(id, keys, ports.Default())`.
+  4. Write `<dir>/.worldtree/compose.override.yml`.
+  5. `docker compose -p <project> -f <original> -f <override> up -d --wait`.
+  6. `Update`: phase `ready`.
+  Demo: `worldtree up` in two copies of `testdata/compose/spring-notes`; both stacks run, ports differ.
 
 ## Open questions
 - Licence for WorldTree (MIT / Apache-2.0?) and whether AGPL/GPL compose files may be used as testdata.

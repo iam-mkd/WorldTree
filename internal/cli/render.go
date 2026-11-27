@@ -5,8 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/iam-mkd/WorldTree/internal/compose"
+	"github.com/iam-mkd/WorldTree/internal/ports"
+	"github.com/iam-mkd/WorldTree/internal/registry"
 	"github.com/iam-mkd/WorldTree/internal/world"
 	"github.com/spf13/cobra"
 )
@@ -19,9 +22,11 @@ func newRenderCmd() *cobra.Command {
 		Long: `render analyses the compose project in dir (default: current directory) and prints the
 override worldtree would generate to stdout, and the ports and findings to stderr.
 
-Ports are assigned sequentially from --port-base; the real allocator (with leases and
-probing) is used by 'up'. Exit status is 1 if any finding is an error (the project
-cannot be isolated as is).`,
+Ports come from the real allocator as a dry run: the world's existing leases are reused,
+other worlds' leases and ports busy on the host are skipped, but nothing is saved, so a
+later 'up' may pick differently if the host changes. --port-base skips the allocator.
+
+Exit status is 1 if any finding is an error (the project cannot be isolated as is).`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
@@ -54,9 +59,9 @@ cannot be isolated as is).`,
 			if err != nil {
 				return err
 			}
-			leases := map[string]int{}
-			for i, r := range plan.Ports {
-				leases[r.Key] = portBase + i
+			leases, err := dryRunLeases(plan, id, abs, portBase)
+			if err != nil {
+				return err
 			}
 			out, err := plan.Render(leases)
 			if err != nil {
@@ -72,7 +77,7 @@ cannot be isolated as is).`,
 			return nil
 		},
 	}
-	cmd.Flags().IntVar(&portBase, "port-base", 20000, "first host port to assign")
+	cmd.Flags().IntVar(&portBase, "port-base", 0, "assign ports sequentially from this port instead of asking the allocator (tests)")
 	return cmd
 }
 
@@ -96,6 +101,37 @@ func printPlan(cmd *cobra.Command, plan *compose.Plan, leases map[string]int) {
 			fmt.Fprintf(w, "  %s\n", f)
 		}
 	}
+}
+
+// dryRunLeases computes the ports `up` would lease, on a copy of the registry state.
+func dryRunLeases(plan *compose.Plan, id, dir string, base int) (map[string]int, error) {
+	keys := make([]string, len(plan.Ports))
+	for i, r := range plan.Ports {
+		keys[i] = r.Key
+	}
+	if base > 0 {
+		m := map[string]int{}
+		for i, k := range keys {
+			m[k] = base + i
+		}
+		return m, nil
+	}
+	regDir, err := registry.DefaultDir()
+	if err != nil {
+		return nil, err
+	}
+	reg, err := registry.Open(regDir)
+	if err != nil {
+		return nil, err
+	}
+	st, err := reg.Load() // unlocked snapshot; never saved
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := st.Worlds[id]; !ok {
+		st.Put(registry.World{ID: id, Dir: dir, Phase: registry.Creating}, time.Now())
+	}
+	return st.Lease(id, keys, ports.Default())
 }
 
 func isFile(p string) bool {

@@ -39,3 +39,21 @@
 - Override sets top-level `name:` to the world project, so it is self-contained even without `-p`.
 - Lease keys are `service/host_ip/target/proto[#n]`, not list positions, so reordering ports keeps leases.
 - `render` exits 1 when any finding is an error, so scripts and agents notice.
+
+## 2026-11-27 — Day 3: registry and port allocation
+- Registry at `$WORLDTREE_HOME`, else `~/.local/state/worldtree` (XDG), `~/Library/Application Support/worldtree`,
+  `%LocalAppData%\worldtree`. One `registry.json`, plus a separate `registry.lock`: locking the data file itself
+  would break on rename.
+- Lock is non-blocking flock/LockFileEx polled up to 30 s, so a stuck holder gives a clear error, not a hang.
+  The OS drops it on kill -9 (tested).
+- A corrupt or newer-schema registry is refused, never overwritten.
+- Leases are per port number (TCP and UDP together) and keyed per world by the compose port key. Re-leasing keeps
+  existing ports *without re-probing them*, because the world's own containers hold them. Keys no longer requested
+  are released.
+- Probe: TCP + UDP bind on 127.0.0.1, ::1, 0.0.0.0, ::. A missing address family (no IPv6) is skipped; any other
+  bind error, including Windows' excluded port ranges (WSAEACCES), counts as busy.
+- Search starts at an FNV hash of the world id within 20000–29999. A recreated world tends to get its old block
+  back, and worlds start far apart. That is the useful part of worktrunk's hash_port, without its collisions.
+- `render` now asks the real allocator as a dry run (unlocked snapshot, nothing saved); `--port-base` bypasses it.
+- Known gap: a port can be taken by another program between leasing and `compose up` (TOCTOU). `up` will surface
+  compose's bind error and re-lease on retry (day 8 reconcile), rather than try to hold sockets open.
