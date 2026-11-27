@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/compose-spec/compose-go/v2/dotenv"
 )
 
 // MinVersion is the oldest Compose that understands !reset and !override.
@@ -17,9 +21,19 @@ var MinVersion = [2]int{2, 24}
 // Compose resolves include, extends, anchors, .env interpolation and relative paths.
 // The output can contain resolved secrets: callers keep it in memory only.
 // It does not need a running Docker daemon.
-func LoadConfig(ctx context.Context, dir string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "--project-directory", dir,
-		"--profile", "*", "config", "--format", "json")
+//
+// files are passed with -f: callers resolve them once with DefaultFiles and give the
+// same list to `docker compose up`, so analysis and startup always load identical inputs.
+func LoadConfig(ctx context.Context, dir string, files []string) ([]byte, error) {
+	if len(files) == 0 {
+		return nil, fmt.Errorf("docker compose config in %s: no compose files given", dir)
+	}
+	args := []string{"compose", "--project-directory", dir}
+	for _, f := range files {
+		args = append(args, "-f", f)
+	}
+	args = append(args, "--profile", "*", "config", "--format", "json")
+	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Dir = dir
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
@@ -27,6 +41,80 @@ func LoadConfig(ctx context.Context, dir string) ([]byte, error) {
 		return nil, fmt.Errorf("docker compose config in %s: %w: %s", dir, err, strings.TrimSpace(errb.String()))
 	}
 	return out.Bytes(), nil
+}
+
+// DefaultFiles returns the compose files `docker compose` would load in dir, in order.
+// Passing `-f` turns compose's own discovery off, so worldtree must list them itself,
+// or a project's docker-compose.override.yml would silently be dropped.
+// COMPOSE_FILE and COMPOSE_PATH_SEPARATOR are honoured like compose does: from the
+// process environment, else from <dir>/.env; relative entries resolve against dir.
+//
+// Unlike compose, parent directories are not searched: a world is identified by its
+// directory, so running from a subdirectory would create a second world for one stack.
+func DefaultFiles(dir string) ([]string, error) {
+	dotenv, err := readDotEnv(filepath.Join(dir, ".env"))
+	if err != nil {
+		return nil, err
+	}
+	setting := func(key string) string {
+		if v := os.Getenv(key); v != "" {
+			return v
+		}
+		return dotenv[key]
+	}
+	if env := setting("COMPOSE_FILE"); env != "" {
+		sep := setting("COMPOSE_PATH_SEPARATOR")
+		if sep == "" {
+			sep = string(os.PathListSeparator)
+		}
+		var files []string
+		for _, f := range strings.Split(env, sep) {
+			if f == "" {
+				continue
+			}
+			if !filepath.IsAbs(f) {
+				f = filepath.Join(dir, f)
+			}
+			files = append(files, f)
+		}
+		return files, nil
+	}
+	first := func(names ...string) string {
+		for _, n := range names {
+			if p := filepath.Join(dir, n); fileExists(p) {
+				return p
+			}
+		}
+		return ""
+	}
+	main := first("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml")
+	if main == "" {
+		return nil, fmt.Errorf("no compose file (compose.yaml, docker-compose.yml, ...) in %s", dir)
+	}
+	files := []string{main}
+	if ov := first("compose.override.yaml", "compose.override.yml", "docker-compose.override.yaml", "docker-compose.override.yml"); ov != "" {
+		files = append(files, ov)
+	}
+	return files, nil
+}
+
+// readDotEnv reads a project .env file with compose's own parser (compose-go), so inline
+// comments, quoting, `export` and ${VAR} interpolation from the process environment
+// behave exactly as in `docker compose`. A missing file yields an empty map.
+func readDotEnv(path string) (map[string]string, error) {
+	if !fileExists(path) {
+		return map[string]string{}, nil
+	}
+	m, err := dotenv.ReadFile(path, os.LookupEnv)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+	return m, nil
+}
+
+func fileExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && st.Mode().IsRegular()
 }
 
 // CheckVersion returns the installed Compose version, or an error if it is

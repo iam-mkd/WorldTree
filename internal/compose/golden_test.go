@@ -66,7 +66,12 @@ func TestGolden(t *testing.T) {
 			golden := filepath.Join("testdata", name)
 			cfgPath := filepath.Join(golden, "config.json")
 			if *update {
-				raw, err := LoadConfig(context.Background(), fixtureDir(t, name))
+				dir := fixtureDir(t, name)
+				files, err := DefaultFiles(dir)
+				if err != nil {
+					t.Fatal(err)
+				}
+				raw, err := LoadConfig(context.Background(), dir, files)
 				if err != nil {
 					t.Fatal(err)
 				}

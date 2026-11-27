@@ -51,7 +51,7 @@ func TestComposeAcceptsOverride(t *testing.T) {
 func mergedWorld(t *testing.T, dir, id string, base int) *Config {
 	t.Helper()
 	ctx := context.Background()
-	raw, err := LoadConfig(ctx, dir)
+	raw, err := LoadConfig(ctx, dir, composeFiles(t, dir))
 	if err != nil {
 		t.Fatal(err)
 	}

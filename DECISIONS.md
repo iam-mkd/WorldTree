@@ -57,3 +57,8 @@
 - `render` now asks the real allocator as a dry run (unlocked snapshot, nothing saved); `--port-base` bypasses it.
 - Known gap: a port can be taken by another program between leasing and `compose up` (TOCTOU). `up` will surface
   compose's bind error and re-lease on retry (day 8 reconcile), rather than try to hold sockets open.
+
+## 2026-11-27 — Licence: Apache-2.0 (user choice)
+- `LICENSE` is the verbatim text from apache.org; copyright holder "The WorldTree Authors".
+- Versus MIT it adds an explicit patent grant. Still open: whether the AGPL/GPL
+  compose files from Spike B may be committed as testdata (they are not, today).

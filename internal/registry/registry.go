@@ -107,6 +107,21 @@ func DefaultDir() (string, error) {
 	}
 }
 
+// LockWorld takes the per-world lock that serialises `up` and `down` of one world across
+// processes, for the whole Docker lifecycle (minutes), unlike the registry lock (milliseconds).
+// Always take it before the registry lock. The kernel releases it if the process dies.
+func (r *Registry) LockWorld(id string, timeout time.Duration) (func(), error) {
+	dir := filepath.Join(r.dir, "worlds")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("registry: %w", err)
+	}
+	unlock, err := lock(filepath.Join(dir, id+".lock"), timeout)
+	if err != nil {
+		return nil, fmt.Errorf("world %s is busy (another worldtree up/down is running for it): %w", id, err)
+	}
+	return unlock, nil
+}
+
 // Path of the JSON state file.
 func (r *Registry) Path() string { return filepath.Join(r.dir, "registry.json") }
 
