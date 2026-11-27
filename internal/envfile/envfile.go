@@ -49,18 +49,21 @@ func Build(w World) []Var {
 		}
 		return ports[i].Key < ports[j].Key // stable order for same target on several host IPs
 	})
-	seen := map[string]int{}
+	used := map[string]bool{}
 	for _, r := range ports {
-		key := "WORLDTREE_PORT_" + envName(r.Service) + "_" + strconv.Itoa(int(r.Port.Target))
+		base := "WORLDTREE_PORT_" + envName(r.Service) + "_" + strconv.Itoa(int(r.Port.Target))
 		if r.Port.Protocol == "udp" {
-			key += "_UDP"
+			base += "_UDP"
 		}
 		// Distinct leases can map to one name (same target on two host IPs; services
-		// "api-web" and "api_web"). The first keeps the plain name, later ones get _2, _3...
-		seen[key]++
-		if n := seen[key]; n > 1 {
-			key += "_" + strconv.Itoa(n)
+		// "api-web" and "api_web"), and a suffixed name can equal another service's plain
+		// one ("api" 8080 #2 vs service "api_8080" target 2). Take the first unused of
+		// base, base_2, base_3...; the order above keeps the result stable.
+		key := base
+		for n := 2; used[key]; n++ {
+			key = base + "_" + strconv.Itoa(n)
 		}
+		used[key] = true
 		vars = append(vars, Var{key, strconv.Itoa(w.Leases[r.Key])})
 	}
 	if pg, ok := find(w, isPostgres, 5432); ok {

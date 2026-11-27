@@ -103,6 +103,29 @@ func TestPortKeysStayDistinct(t *testing.T) {
 	}
 }
 
+func TestSuffixedPortKeyCannotShadowAnotherService(t *testing.T) {
+	w := World{
+		ID: "id", Project: "p",
+		Config: &compose.Config{Services: map[string]compose.Service{"api": {}, "api_8080": {}}},
+		Ports: []compose.PortRequest{
+			{Key: "api//8080/tcp", Service: "api", Port: compose.Port{Target: 8080}},
+			{Key: "api/127.0.0.1/8080/tcp", Service: "api", Port: compose.Port{HostIP: "127.0.0.1", Target: 8080}},
+			{Key: "api_8080//2/tcp", Service: "api_8080", Port: compose.Port{Target: 2}},
+		},
+		Leases: map[string]int{"api//8080/tcp": 1, "api/127.0.0.1/8080/tcp": 2, "api_8080//2/tcp": 3},
+	}
+	got := map[string]string{}
+	for _, v := range Build(w)[2:] {
+		if _, dup := got[v.Key]; dup {
+			t.Fatalf("duplicate key %s in %v", v.Key, Build(w))
+		}
+		got[v.Key] = v.Value
+	}
+	if len(got) != 3 {
+		t.Errorf("got %v, want 3 distinct keys", got)
+	}
+}
+
 func TestRenderRoundTripsThroughComposeParser(t *testing.T) {
 	vars := []Var{
 		{"PLAIN", "abc"},
