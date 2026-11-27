@@ -23,8 +23,15 @@
 - From now on: every change goes on a branch + PR; never push to `main` directly.
 
 ## Next
-- Day 4: `up` v1: register intent -> lease -> render -> `compose up -d --wait` -> mark ready. Needs a Docker
-  daemon; the cloud container has none, so Day 4 needs your machine or CI to run it for real.
+- Day 4 runs on the user's machine (real Docker), not in the cloud session. Start from `main` after PR #3 merges.
+  `up` v1, in this order, each step idempotent:
+  1. `Update`: `Put` world (phase `creating`) — before any Docker call.
+  2. `LoadConfig` -> `NewPlan`; refuse if `HasErrors()`.
+  3. `Update`: `Lease(id, keys, ports.Default())`.
+  4. Write `<dir>/.worldtree/compose.override.yml`.
+  5. `docker compose -p <project> -f <original> -f <override> up -d --wait`.
+  6. `Update`: phase `ready`.
+  Demo: `worldtree up` in two copies of `testdata/compose/spring-notes`; both stacks run, ports differ.
 
 ## Open questions
 - Licence for WorldTree (MIT / Apache-2.0?) and whether AGPL/GPL compose files may be used as testdata.
