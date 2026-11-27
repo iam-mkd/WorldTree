@@ -102,6 +102,9 @@ func (u *Upper) Up(ctx context.Context, absDir string) (*UpResult, error) {
 		return nil, err
 	}
 	defer unlock()
+	if err := stopStaleCleanup(ctx, u.Reg, ID(absDir), absDir, u.Run); err != nil {
+		return nil, err
+	}
 
 	a, err := Analyse(ctx, absDir, u.Load)
 	if err != nil {

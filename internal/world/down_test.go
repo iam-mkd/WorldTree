@@ -203,7 +203,8 @@ func TestDownDeletesContainerOwnedFilesFromAContainer(t *testing.T) {
 		t.Fatal(err)
 	}
 	gen := filepath.Join(dir, ".worldtree")
-	want := "run --rm --label " + "dev.worldtree.world=" + up.ID + " -v " + gen + ":/w " + CleanupImage + " find /w -mindepth 1 -delete"
+	want := "run --rm --name " + CleanupContainer(up.ID) + " --label dev.worldtree.world=" + up.ID +
+		" -v " + gen + ":/w " + CleanupImage + " find /w -mindepth 1 -delete"
 	if len(*calls) != 2 || (*calls)[1].args != want {
 		t.Fatalf("docker calls = %v\nwant second = %q", *calls, want)
 	}
@@ -221,9 +222,16 @@ func TestDownKeepsRecordWhenCleanupFails(t *testing.T) {
 	}
 	d, _, _ := newTestDowner(u.Reg)
 	d.RemoveAll = permDenied(10)
-	d.Run = func(_ context.Context, _ string, _ io.Writer, args ...string) error {
-		if args[0] == "run" {
+	var removed []string
+	d.Run = func(ctx context.Context, _ string, _ io.Writer, args ...string) error {
+		switch args[0] {
+		case "run":
 			return errors.New("cannot pull alpine")
+		case "rm":
+			if ctx.Err() != nil {
+				t.Error("cleanup container removed with a cancelled context")
+			}
+			removed = append(removed, strings.Join(args, " "))
 		}
 		return nil
 	}
@@ -233,6 +241,34 @@ func TestDownKeepsRecordWhenCleanupFails(t *testing.T) {
 	st := load(t, u.Reg)
 	if w := st.Worlds[up.ID]; w == nil || w.Phase != registry.Removing || len(st.LeasesOf(up.ID)) == 0 {
 		t.Errorf("world = %+v leases = %v; want removing with leases kept", w, st.LeasesOf(up.ID))
+	}
+	if want := "rm -f " + CleanupContainer(up.ID); len(removed) != 1 || removed[0] != want {
+		t.Errorf("after failed cleanup removed %v, want [%q]", removed, want)
+	}
+}
+
+func TestUpRemovesStaleCleanupContainerOfRemovingWorld(t *testing.T) {
+	u, fd := newTestUpper(t, colliding)
+	dir := projectDir(t, "docker-compose.yml")
+	if _, err := u.Up(context.Background(), dir); err != nil {
+		t.Fatal(err)
+	}
+	id := ID(dir)
+	// A down died mid-cleanup: the world is still removing.
+	if err := u.Reg.Update(func(s *registry.State) error {
+		w := *s.Worlds[id]
+		w.Phase = registry.Removing
+		s.Put(w, time.Unix(0, 0))
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fd.calls = nil
+	if _, err := u.Up(context.Background(), dir); err != nil {
+		t.Fatal(err)
+	}
+	if len(fd.calls) != 2 || strings.Join(fd.calls[0], " ") != "rm -f "+CleanupContainer(id) {
+		t.Errorf("docker calls = %v; want stale cleanup container removed before compose up", fd.calls)
 	}
 }
 

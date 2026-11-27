@@ -124,11 +124,35 @@ func (d *Downer) removeGenerated(ctx context.Context, id, gen, neutral string) e
 		return err
 	}
 	fmt.Fprintf(d.Log, "%s holds files owned by a container user; deleting them from a %s container\n", gen, CleanupImage)
-	if rerr := d.Run(ctx, neutral, d.Log, "run", "--rm", "--label", compose.LabelWorld+"="+id,
+	name := CleanupContainer(id)
+	if rerr := d.Run(ctx, neutral, d.Log, "run", "--rm", "--name", name, "--label", compose.LabelWorld+"="+id,
 		"-v", gen+":/w", CleanupImage, "find", "/w", "-mindepth", "1", "-delete"); rerr != nil {
+		// The docker client may have been killed (cancelled ctx) while the container keeps
+		// running; stop it before the world lock is released, even if ctx is cancelled.
+		_ = d.Run(context.WithoutCancel(ctx), neutral, io.Discard, "rm", "-f", name)
 		return fmt.Errorf("%w (container cleanup also failed: %v)", err, rerr)
 	}
 	return removeAll(gen)
+}
+
+// CleanupContainer is the name of the world's fallback cleanup container. If worldtree itself
+// dies mid-cleanup the container can outlive the world lock; it carries the world label, so
+// the next `down` sweeps it, and the next `up` removes it by name (stopStaleCleanup).
+func CleanupContainer(id string) string { return "worldtree-cleanup-" + id }
+
+// stopStaleCleanup force-removes a cleanup container left by a `down` that died, if the world
+// is still `removing`, so it cannot delete files the caller is about to write. Called with the
+// world lock held. A missing container is not an error.
+func stopStaleCleanup(ctx context.Context, reg *registry.Registry, id, dir string,
+	run func(ctx context.Context, dir string, log io.Writer, args ...string) error) error {
+	st, err := reg.Load()
+	if err != nil {
+		return err
+	}
+	if w, ok := st.Worlds[id]; ok && w.Phase == registry.Removing {
+		_ = run(ctx, dir, io.Discard, "rm", "-f", CleanupContainer(id))
+	}
+	return nil
 }
 
 // sweep removes resources labelled with the world id that compose down did not, such as
