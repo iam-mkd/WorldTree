@@ -39,16 +39,24 @@ func TestFreeSeesEveryAddress(t *testing.T) {
 	}
 }
 
+// An OS-chosen TCP port on 127.0.0.1 may still be in use on another address or for
+// UDP by an unrelated process, so try a few candidates and fail only if none is free.
 func TestFreeOnUnusedPort(t *testing.T) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	const attempts = 20
+	var tried []int
+	for i := 0; i < attempts; i++ {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := l.Addr().(*net.TCPAddr).Port
+		_ = l.Close()
+		if Free(p) {
+			return
+		}
+		tried = append(tried, p)
 	}
-	p := l.Addr().(*net.TCPAddr).Port
-	_ = l.Close()
-	if !Free(p) {
-		t.Errorf("port %d was just released but Free says busy", p)
-	}
+	t.Errorf("Free said busy for all %d just-released ports: %v", attempts, tried)
 }
 
 func TestPickSkipsTakenAndBusy(t *testing.T) {

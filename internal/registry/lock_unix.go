@@ -45,3 +45,7 @@ func syncDir(dir string) {
 		_ = d.Close()
 	}
 }
+
+// replaceFile atomically renames tmp over path. POSIX rename succeeds while readers
+// have path open; they keep reading the old file.
+func replaceFile(tmp, path string) error { return os.Rename(tmp, path) }

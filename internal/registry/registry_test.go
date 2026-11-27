@@ -168,10 +168,35 @@ func TestLeaseSkipsHeldPort(t *testing.T) {
 	held := l.Addr().(*net.TCPAddr).Port
 	s := newState()
 	s.Put(World{ID: "a"}, t0)
-	got, err := s.Lease("a", []string{"db"}, ports.Allocator{Min: held, Max: held + 20})
+	// The held port is the whole range, so the only correct answer is an error.
+	got, err := s.Lease("a", []string{"db"}, ports.Allocator{Min: held, Max: held})
+	if err == nil {
+		t.Fatalf("leased %v although the only port in range (%d) is held", got, held)
+	}
+	if len(s.LeasesOf("a")) != 0 {
+		t.Errorf("failed lease left leases behind: %v", s.LeasesOf("a"))
+	}
+}
+
+// A reader holding registry.json open (a concurrent Load) must not make a committed
+// Update fail. On Unix rename never conflicts; on Windows replaceFile retries.
+func TestUpdateWhileReaderHoldsFileOpen(t *testing.T) {
+	r := open(t)
+	must(t, r.Update(func(s *State) error { s.Put(World{ID: "a"}, t0); return nil }))
+	f, err := os.Open(r.Path())
 	must(t, err)
-	if got["db"] == held {
-		t.Errorf("leased port %d that another process holds", held)
+	released := make(chan struct{})
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		_ = f.Close()
+		close(released)
+	}()
+	must(t, r.Update(func(s *State) error { s.Put(World{ID: "b"}, t0); return nil }))
+	<-released
+	s, err := r.Load()
+	must(t, err)
+	if _, ok := s.Worlds["b"]; !ok {
+		t.Error("update lost")
 	}
 }
 
@@ -194,8 +219,12 @@ func TestFailedUpdateWritesNothing(t *testing.T) {
 
 func TestCorruptOrNewerFileIsRefusedNotOverwritten(t *testing.T) {
 	for name, content := range map[string]string{
-		"corrupt": `{"version": 1, "worlds": {`,
-		"newer":   `{"version": 99, "worlds": {}}`,
+		"corrupt":        `{"version": 1, "worlds": {`,
+		"newer":          `{"version": 99, "worlds": {}}`,
+		"null document":  `null`,
+		"null world":     `{"version": 1, "worlds": {"a": null}}`,
+		"world id moved": `{"version": 1, "worlds": {"a": {"id": "b"}}}`,
+		"duplicate port": `{"version": 1, "worlds": {}, "leases": [{"port": 20000, "world": "a", "key": "x"}, {"port": 20000, "world": "b", "key": "y"}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := open(t)

@@ -41,4 +41,27 @@ func lock(path string, timeout time.Duration) (func(), error) {
 	}
 }
 
-func syncDir(string) {} // NTFS rename is durable enough; directories cannot be fsynced here.
+func syncDir(string) {}
+
+// replaceFile renames tmp over path. Go opens files without FILE_SHARE_DELETE, so while
+// a concurrent Load has path open, the replacing rename fails with access denied or a
+// sharing violation. Reads are short, so retry with backoff (about 2 s in all) rather
+// than fail an update that is otherwise committed.
+func replaceFile(tmp, path string) error {
+	delay := 5 * time.Millisecond
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		err := os.Rename(tmp, path)
+		if err == nil {
+			return nil
+		}
+		busy := errors.Is(err, windows.ERROR_ACCESS_DENIED) || errors.Is(err, windows.ERROR_SHARING_VIOLATION)
+		if !busy || time.Now().After(deadline) {
+			return err
+		}
+		time.Sleep(delay)
+		if delay < 100*time.Millisecond {
+			delay *= 2
+		}
+	}
+} // NTFS rename is durable enough; directories cannot be fsynced here.

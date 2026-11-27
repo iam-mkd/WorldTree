@@ -124,11 +124,34 @@ func (r *Registry) Load() (*State, error) {
 	return decode(r.Path(), data)
 }
 
+// decode parses and validates the registry. Anything it cannot trust is an error, and
+// Update never writes after a failed decode, so a bad file is left as it is.
 func decode(path string, data []byte) (*State, error) {
+	// Never overwrite a file we cannot read: it may be hand-edited or from a newer worldtree.
+	corrupt := func(why any) error {
+		return fmt.Errorf("registry %s is corrupt (%v); fix or move it aside", path, why)
+	}
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return nil, corrupt("document is null") // Unmarshal would silently keep the empty default
+	}
 	s := newState()
 	if err := json.Unmarshal(data, s); err != nil {
-		// Never overwrite a file we cannot read: it may be hand-edited or from a newer worldtree.
-		return nil, fmt.Errorf("registry %s is corrupt (%v); fix or move it aside", path, err)
+		return nil, corrupt(err)
+	}
+	for id, w := range s.Worlds {
+		if w == nil {
+			return nil, corrupt(fmt.Sprintf("world %q is null", id))
+		}
+		if w.ID != id {
+			return nil, corrupt(fmt.Sprintf("world %q has id %q", id, w.ID))
+		}
+	}
+	ports := map[int]string{}
+	for _, l := range s.Leases {
+		if other, dup := ports[l.Port]; dup {
+			return nil, corrupt(fmt.Sprintf("port %d leased to both %q and %q", l.Port, other, l.World))
+		}
+		ports[l.Port] = l.World
 	}
 	if s.Version > SchemaVersion {
 		return nil, fmt.Errorf("registry %s has schema %d; this worldtree understands %d (upgrade worldtree)", path, s.Version, SchemaVersion)
@@ -176,7 +199,10 @@ func (r *Registry) Update(fn func(*State) error) error {
 	return writeAtomic(r.Path(), after)
 }
 
-// writeAtomic writes data to a temp file in the same dir, fsyncs it, and renames it over path.
+// writeAtomic writes data to a temp file in the same dir, fsyncs it, and renames it over
+// path. Readers see the old or the new file, never a mix. The directory fsync after the
+// rename is best effort: a nil return does not guarantee the new file survives a power
+// loss, and the previous registry state may come back instead (still a whole file).
 func writeAtomic(path string, data []byte) error {
 	f, err := os.CreateTemp(filepath.Dir(path), ".registry-*.tmp")
 	if err != nil {
@@ -200,7 +226,7 @@ func writeAtomic(path string, data []byte) error {
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("registry: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := replaceFile(tmp, path); err != nil {
 		return fmt.Errorf("registry: %w", err)
 	}
 	ok = true
