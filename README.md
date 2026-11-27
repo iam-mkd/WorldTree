@@ -7,7 +7,7 @@
 networks, volumes, Postgres and Redis. Run two or three agents (Claude Code, Codex, Cursor) on the same
 app at once without them fighting over `5432`, sharing a database, or leaving orphaned containers behind.
 
-> **Status: pre-alpha, under active development.** `render`, `up`, `down` and `ps` work today; `env`,
+> **Status: pre-alpha, under active development.** `render`, `up`, `down`, `ps` and `env` work today;
 > `gc` and `doctor --prove` are being built (see [Roadmap](#roadmap)). There are no releases yet; build
 > from source. Interfaces may change.
 
@@ -35,6 +35,7 @@ worktree/                          worldtree up
 ├── src/ ...                                │
 └── .worldtree/                             ▼
     ├── compose.override.yml   ◄──  analyse + render override   ◄── ports leased from a locked per-user registry
+    ├── env  (0600)            ◄──  ports, DATABASE_URL, SPRING_DATASOURCE_*, REDIS_URL
     └── .gitignore  (*)                     │
                                             ▼
                                    docker compose -p wt-<name>-<id> -f <your files> -f .worldtree/compose.override.yml up -d --wait
@@ -127,6 +128,41 @@ world 685b5880 ready: project wt-agent-b-685b5880
   redis                *:27751 -> container 6379/tcp
 ```
 
+### Connect an app running on the host
+
+`up` also writes the world's environment to `.worldtree/env`; `worldtree env` prints it. Postgres and
+Redis/Valkey services are detected by image name, credentials come from the service's `POSTGRES_*` settings:
+
+```text
+$ worldtree env ../agent-b
+WORLDTREE_ID='5aca4467'
+WORLDTREE_PROJECT='wt-agent-b-5aca4467'
+WORLDTREE_PORT_APP_8080='21976'
+WORLDTREE_PORT_POSTGRES_5432='21977'
+WORLDTREE_PORT_REDIS_6379='21978'
+DATABASE_URL='postgres://notes:notes@127.0.0.1:21977/notes'
+SPRING_DATASOURCE_URL='jdbc:postgresql://127.0.0.1:21977/notes'
+SPRING_DATASOURCE_USERNAME='notes'
+SPRING_DATASOURCE_PASSWORD='notes'
+REDIS_URL='redis://127.0.0.1:21978'
+SPRING_DATA_REDIS_HOST='127.0.0.1'
+SPRING_DATA_REDIS_PORT='21978'
+```
+
+Spring Boot applies `SPRING_*` names only from real environment variables, so load them into the shell
+that starts the app:
+
+```sh
+eval "$(worldtree env --format sh)" && ./mvnw spring-boot:run              # bash / zsh
+```
+
+```powershell
+worldtree env --format powershell | Out-String | Invoke-Expression; ./mvnw spring-boot:run
+```
+
+With that, the bundled Spring sample started on the host wrote into world B's Postgres and Redis, and
+world A stayed empty.
+
 See every world, then remove one when its agent is done:
 
 ```text
@@ -153,7 +189,7 @@ harmless.
 | `worldtree version` | available | Print version, commit and platform |
 | `worldtree down [dir]` | available | Remove the world's containers, networks, volumes (incl. its database), ports, registry record and `.worldtree/`; works after the dir is deleted |
 | `worldtree ps` | available | List worlds with phase, running containers, ports and dir; flags worlds whose dir is gone |
-| `worldtree env [dir]` | planned | Print `DATABASE_URL`, `SPRING_DATASOURCE_*`, `REDIS_URL`, per-service ports |
+| `worldtree env [dir]` | available | Print the world's ports, `DATABASE_URL`, `SPRING_DATASOURCE_*`, `REDIS_URL`; `--format dotenv\|sh\|powershell` |
 | `worldtree gc [--yes]` | planned | Find and remove orphaned worlds, containers, volumes, networks and leases |
 | `worldtree doctor --prove` | planned | Prove isolation: sentinel row/key written in world A is absent in B, ports and volumes not shared |
 | `worldtree init` | planned | Add worktrunk `pre-start` / `pre-remove` hooks |
@@ -201,7 +237,9 @@ the world's directory, Postgres data (separate server), Redis data (separate ser
 - external volumes and networks (reported as warnings), `pid: host`, `ipc: host`, the Docker socket;
 - images and the build cache (shared by design);
 - secrets in env files: copied into containers as-is. `docker compose config` output can contain resolved
-  secrets; WorldTree keeps it in memory and never writes it to disk.
+  secrets; WorldTree keeps it in memory. The one secret it writes to disk is the detected Postgres password,
+  in `<dir>/.worldtree/env` (mode 0600 on macOS/Linux, git-ignored, deleted by `down`), and `worldtree env`
+  prints it.
 
 `network_mode: host`, pinned network subnets and static container IPs are refused.
 
@@ -217,7 +255,7 @@ the world's directory, Postgres data (separate server), Redis data (separate ser
 ## Roadmap
 
 The 14-day MVP plan is in [`PLAN.md`](PLAN.md), the design in [`ARCHITECTURE.md`](ARCHITECTURE.md), and
-the reasoning behind each choice in [`DECISIONS.md`](DECISIONS.md). Next: `env`, a real-Docker
+the reasoning behind each choice in [`DECISIONS.md`](DECISIONS.md). Next: a real-Docker
 integration test in CI, crash reconcile, `gc`, `doctor --prove`, worktrunk `init`, then v0.1.0 with
 Homebrew and release binaries.
 

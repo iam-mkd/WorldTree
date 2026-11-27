@@ -22,7 +22,7 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: false,
 	}
-	root.AddCommand(newVersionCmd(), newRenderCmd(), newUpCmd(), newDownCmd(), newPsCmd())
+	root.AddCommand(newVersionCmd(), newRenderCmd(), newUpCmd(), newDownCmd(), newPsCmd(), newEnvCmd())
 	return root
 }
 
