@@ -17,22 +17,21 @@
   — merged (PR #2).
 - Day 3 (`internal/registry` JSON + flock + atomic write; `internal/ports` 4-address TCP/UDP probe + hashed-start
   allocator; `render` uses it as a dry run) — merged (PR #3).
-- Day 4 (`worldtree up`: analyse -> refuse errors -> register `creating` + lease in one locked update -> write
-  override -> `compose up -d --wait` -> `ready`; `compose.DefaultFiles`; render shares `world.Analyse`) — branch
-  `day-04-up`. Demo on real Docker passed: 2 copies of spring-notes up, distinct ports, data isolated,
-  re-run kept ports (3 s).
-  Deviations: analyse runs *before* registering (refused projects leave no record); `.worldtree/.gitignore` = `*`;
-  spring-notes Dockerfile is now multi-stage (builds the jar in Docker).
+- Day 4 (`up`; per-world lock; compose-go .env parsing; files resolved once; README; Apache-2.0) — merged (PR #4).
+- Day 5 (`down`: lock -> `removing` -> `compose -p down -v --remove-orphans` from a neutral dir -> label sweep ->
+  rm `.worldtree` -> registry remove; works on deleted dirs, idempotent. `ps`: registry + one `docker ps`, flags
+  missing dirs) — branch `day-05-down-ps`. Real-Docker demo passed: 2 worlds, `rm -rf` one, `ps` flags it,
+  `down` both, 0 labelled resources and empty registry left; user's own containers untouched.
 
 ## Workflow
 - Repo: https://github.com/iam-mkd/WorldTree (public). Initial commits pushed to `main` on 2026-11-26.
 - From now on: every change goes on a branch + PR; never push to `main` directly.
 
 ## Next
-- Day 5: `worldtree down [dir]` (compose down -v --remove-orphans by project, remove `.worldtree/`, `Remove` from
-  registry; idempotent on unknown/half-created worlds) + `worldtree ps`.
-- Known gap: if a non-worldtree process grabs a leased port after `up` leased it, re-running `up` reuses the same
-  (busy) port and fails again. Fix candidate: on compose "port is already allocated", release that lease and retry.
+- Day 6: `envfile` + `worldtree env` (per-service ports, DATABASE_URL, SPRING_DATASOURCE_*, REDIS_URL); demo:
+  Spring app on the host against world B.
+- Known gap: a port grabbed by a non-worldtree process after leasing makes every re-run of `up` fail on it.
+  Fix candidate: on compose "port is already allocated", release that lease and retry.
 
 ## Open questions
 - Licence decided: Apache-2.0 (2026-11-27). Still open: may AGPL/GPL compose files be committed as testdata?
